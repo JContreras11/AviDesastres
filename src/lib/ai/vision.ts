@@ -4,116 +4,142 @@ import OpenAI from "openai";
 const client = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: "https://openrouter.ai/api/v1",
-  defaultHeaders: {
-    "HTTP-Referer": "https://avihelp.app",
-    "X-Title": "AviHelp",
-  },
+  defaultHeaders: { "HTTP-Referer": "https://avihelp.app", "X-Title": "AviHelp" },
 });
 
-// Modelo barato por defecto; escala a uno más preciso si la confianza es baja.
 const MODEL = process.env.OPENROUTER_VISION_MODEL ?? "google/gemini-2.5-flash-lite";
-const MODEL_ESCALADO = process.env.OPENROUTER_VISION_MODEL_HQ ?? "google/gemini-2.5-flash";
-const UMBRAL_CONFIANZA = 0.5; // por debajo => pedir mejor foto
+const MODEL_HQ = process.env.OPENROUTER_VISION_MODEL_HQ ?? "google/gemini-2.5-flash";
+const UMBRAL_CONFIANZA = 0.5;
 
-export type ResultadoExtraccion<T> =
-  | { ok: true; data: T; confianza: number; modelo: string }
-  | { ok: false; motivo: string }; // imagen ilegible / borrosa
-
-const PROMPT_PERSONAS =
-  "Eres un asistente de emergencias. Extrae TODAS las personas de la imagen (cédula de identidad, " +
-  "lista de pacientes escrita a mano, o cartel de desaparecidos). NO inventes datos: si un campo no " +
-  "es legible, devuélvelo null. Si la imagen está borrosa o no se puede leer con seguridad, marca " +
-  "legible=false y explica en motivo_ilegible. confianza (0..1) = qué tan seguro estás de lo leído.\n" +
-  'Responde SOLO JSON: {"legible":bool,"confianza":number,"motivo_ilegible":string|null,' +
-  '"personas":[{"nombre":string|null,"cedula":string|null,"edad":int|null,' +
-  '"sexo":"M"|"F"|"O"|"desconocido"|null,"ubicacion":string|null,' +
-  '"estado_salud":"vivo"|"herido"|"desaparecido"|"detenido"|"fallecido"|"desconocido"|null,' +
-  '"descripcion_fisica":string|null}]}';
-
-const PROMPT_INSUMOS =
-  "Eres un asistente de logística médica. Digitaliza EXACTAMENTE la lista de insumos médicos de la " +
-  "imagen (suele estar escrita a mano y pegada en una pared de hospital). NO inventes ni completes " +
-  "items que no estén. Si no es legible, legible=false con motivo_ilegible.\n" +
-  'Responde SOLO JSON: {"legible":bool,"confianza":number,"motivo_ilegible":string|null,' +
-  '"insumos":[{"nombre":string,"cantidad":number|null,"unidad":string|null,' +
-  '"prioridad":"baja"|"media"|"alta"|"critica"|null}]}';
-
-async function llamar(
-  imagenDataUrl: string,
-  prompt: string,
-  modelo: string,
-): Promise<{ raw: any; legible: boolean; confianza: number; motivo?: string }> {
-  const res = await client.chat.completions.create({
-    model: modelo,
-    messages: [
-      { role: "system", content: prompt },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Procesa esta imagen." },
-          { type: "image_url", image_url: { url: imagenDataUrl } },
-        ],
-      },
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0,
-  });
-  let parsed: any = {};
-  try {
-    parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}");
-  } catch {
-    return { raw: {}, legible: false, confianza: 0, motivo: "Respuesta IA no parseable." };
-  }
-  return {
-    raw: parsed,
-    legible: parsed.legible !== false,
-    confianza: typeof parsed.confianza === "number" ? parsed.confianza : 0,
-    motivo: parsed.motivo_ilegible ?? undefined,
-  };
-}
-
-// Extrae con modelo barato; si confianza < umbral y aún legible, reintenta una vez con modelo HQ.
-async function extraer<T>(
-  imagenDataUrl: string,
-  prompt: string,
-  pick: (raw: any) => T,
-): Promise<ResultadoExtraccion<T>> {
-  let modelo = MODEL;
-  let r = await llamar(imagenDataUrl, prompt, modelo);
-
-  if (r.legible && r.confianza < UMBRAL_CONFIANZA) {
-    modelo = MODEL_ESCALADO; // segunda opinión más precisa
-    r = await llamar(imagenDataUrl, prompt, modelo);
-  }
-  if (!r.legible || r.confianza < UMBRAL_CONFIANZA) {
-    return {
-      ok: false,
-      motivo: r.motivo ?? "Por favor, sube una imagen más clara.",
-    };
-  }
-  return { ok: true, data: pick(r.raw), confianza: r.confianza, modelo };
-}
-
+// ── Modelo de datos unificado que la IA debe poblar ──
 export type PersonaExtraida = {
   nombre: string | null;
   cedula: string | null;
   edad: number | null;
-  sexo: string | null;
+  sexo: "M" | "F" | "O" | "desconocido" | null;
   ubicacion: string | null;
-  estado_salud: string | null;
+  estado_salud: "vivo" | "herido" | "desaparecido" | "detenido" | "fallecido" | "desconocido" | null;
   descripcion_fisica: string | null;
+  telefono_contacto: string | null;
+  contacto_nombre: string | null;
+  notas: string | null;
 };
 export type InsumoExtraido = {
   nombre: string;
   cantidad: number | null;
   unidad: string | null;
-  prioridad: string | null;
+  prioridad: "baja" | "media" | "alta" | "critica" | null;
+};
+export type TipoDocumento =
+  | "cedula" | "lista_pacientes" | "cartel_desaparecidos"
+  | "lista_estado" | "lista_insumos" | "otro";
+
+export type DocumentoAnalizado = {
+  tipo: TipoDocumento;
+  contexto: string | null; // ej. "Pacientes ingresados por sismo 24/6/2026"
+  hospital: { nombre: string | null; ubicacion: string | null } | null;
+  personas: PersonaExtraida[];
+  insumos: InsumoExtraido[];
 };
 
-export function extraerPersonas(imagenDataUrl: string) {
-  return extraer<PersonaExtraida[]>(imagenDataUrl, PROMPT_PERSONAS, (raw) => raw.personas ?? []);
+export type Resultado<T> =
+  | { ok: true; data: T; confianza: number; modelo: string }
+  | { ok: false; motivo: string };
+
+const PROMPT = `Eres el cerebro de una plataforma de emergencias humanitarias. Recibes UNA imagen que puede ser de cualquier tipo:
+- cédula de identidad (extrae nombre completo, número de cédula, fecha de nacimiento->edad, sexo, nacionalidad).
+- lista de pacientes ingresados escrita a mano (cada fila es una persona herida/ingresada).
+- cartel o collage de personas desaparecidas (nombre, teléfonos de contacto, descripción física, tatuajes, dónde fue visto, quién reporta).
+- lista de nombres con estado entre paréntesis: (DESAPARECIDO), (DETENIDO), (HERIDO), (ASESINADO), (MENOR DE EDAD).
+- lista de insumos médicos faltantes de un hospital (escrita a mano, pegada en pared).
+- otro.
+
+REGLAS:
+1. Clasifica el documento en "tipo".
+2. Extrae la MÁXIMA información posible. NO inventes: si un dato no está o no es legible, usa null. NO completes datos que no veas.
+3. Infiere "estado_salud" del CONTEXTO: "pacientes ingresados/heridos"->"herido"; cartel de desaparecido->"desaparecido"; (ASESINADO)->"fallecido"; (DETENIDO)->"detenido"; cédula sola->"desconocido". Mapea sinónimos al enum exacto.
+4. Captura teléfonos (telefono_contacto), quién reporta (contacto_nombre), tatuajes/señas en descripcion_fisica, y cualquier extra en notas.
+5. Si detectas un hospital (ej. "Hospital Domingo Luciani"), llénalo en "hospital".
+6. "contexto" = título/encabezado o resumen de qué es el documento.
+7. confianza (0..1) = qué tan seguro estás de la lectura global. legible=false si está borroso/ilegible.
+
+Responde SOLO JSON con esta forma exacta:
+{"legible":bool,"confianza":number,"motivo_ilegible":string|null,
+ "tipo":"cedula|lista_pacientes|cartel_desaparecidos|lista_estado|lista_insumos|otro",
+ "contexto":string|null,
+ "hospital":{"nombre":string|null,"ubicacion":string|null}|null,
+ "personas":[{"nombre":string|null,"cedula":string|null,"edad":int|null,"sexo":"M|F|O|desconocido"|null,"ubicacion":string|null,"estado_salud":"vivo|herido|desaparecido|detenido|fallecido|desconocido"|null,"descripcion_fisica":string|null,"telefono_contacto":string|null,"contacto_nombre":string|null,"notas":string|null}],
+ "insumos":[{"nombre":string,"cantidad":number|null,"unidad":string|null,"prioridad":"baja|media|alta|critica"|null}]}`;
+
+type Contenido =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+async function llamarCon(contenido: Contenido[], modelo: string) {
+  const res = await client.chat.completions.create({
+    model: modelo,
+    messages: [
+      { role: "system", content: PROMPT },
+      { role: "user", content: contenido },
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0,
+  });
+  let raw: any = {};
+  try {
+    raw = JSON.parse(res.choices[0]?.message?.content ?? "{}");
+  } catch {
+    return { raw: {}, legible: false, confianza: 0, motivo: "Respuesta IA no parseable." };
+  }
+  return {
+    raw,
+    legible: raw.legible !== false,
+    confianza: typeof raw.confianza === "number" ? raw.confianza : 0,
+    motivo: raw.motivo_ilegible ?? undefined,
+  };
 }
 
-export function extraerInsumos(imagenDataUrl: string) {
-  return extraer<InsumoExtraido[]>(imagenDataUrl, PROMPT_INSUMOS, (raw) => raw.insumos ?? []);
+function normalizar(raw: any, r: { confianza: number }, modelo: string): Resultado<DocumentoAnalizado> {
+  const data: DocumentoAnalizado = {
+    tipo: raw.tipo ?? "otro",
+    contexto: raw.contexto ?? null,
+    hospital: raw.hospital?.nombre ? raw.hospital : null,
+    personas: Array.isArray(raw.personas) ? raw.personas : [],
+    insumos: Array.isArray(raw.insumos) ? raw.insumos : [],
+  };
+  return { ok: true, data, confianza: r.confianza, modelo };
+}
+
+async function ejecutar(
+  contenido: Contenido[],
+  rechazo: string,
+): Promise<Resultado<DocumentoAnalizado>> {
+  let modelo = MODEL;
+  let r = await llamarCon(contenido, modelo);
+  if (r.legible && r.confianza < UMBRAL_CONFIANZA) {
+    modelo = MODEL_HQ;
+    r = await llamarCon(contenido, modelo);
+  }
+  if (!r.legible || r.confianza < UMBRAL_CONFIANZA)
+    return { ok: false, motivo: r.motivo ?? rechazo };
+  return normalizar(r.raw, r, modelo);
+}
+
+// Imagen: clasifica + extrae. Escala a modelo HQ si la confianza es baja.
+export function analizarDocumento(dataUrl: string) {
+  return ejecutar(
+    [
+      { type: "text", text: "Analiza esta imagen y devuelve el JSON." },
+      { type: "image_url", image_url: { url: dataUrl } },
+    ],
+    "Por favor, sube una imagen más clara.",
+  );
+}
+
+// Texto (audio transcrito / dictado): mismo cerebro, sin imagen.
+export function analizarTexto(texto: string) {
+  return ejecutar(
+    [{ type: "text", text: `Texto dictado o transcrito de un voluntario:\n"""${texto}"""\nExtrae las entidades y devuelve el JSON.` }],
+    "No se entendió el audio. Intenta de nuevo, más claro.",
+  );
 }
