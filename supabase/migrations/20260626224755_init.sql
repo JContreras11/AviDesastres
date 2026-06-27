@@ -1,4 +1,4 @@
--- AviDesastres — Esquema completo Supabase (Fase 1)
+-- AviHelp — Esquema completo Supabase (Fase 1)
 -- Ejecutar en Supabase SQL Editor (o `supabase db push`).
 -- Idempotente: usa IF NOT EXISTS / CREATE OR REPLACE donde aplica.
 
