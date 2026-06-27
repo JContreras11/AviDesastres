@@ -12,13 +12,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 type Facet = { columnId: string; label: string; options: string[] };
 
 export function DataTable<T>({
-  columns, data, onRowClick, placeholder = "Buscar…", facets = [],
+  columns, data, onRowClick, placeholder = "Buscar…", facets = [], onExport,
 }: {
   columns: ColumnDef<T, any>[];
   data: T[];
   onRowClick?: (row: T) => void;
   placeholder?: string;
   facets?: Facet[];
+  onExport?: (rows: T[]) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -53,6 +54,12 @@ export function DataTable<T>({
             {f.options.map((o) => <option key={o} value={o}>{o.replace("_", " ")}</option>)}
           </select>
         ))}
+        {onExport && (
+          <Button variant="outline" className="h-11"
+            onClick={() => onExport(table.getFilteredRowModel().rows.map((r) => r.original))}>
+            ⬇ Exportar
+          </Button>
+        )}
       </div>
 
       <div className="rounded-xl border overflow-x-auto">

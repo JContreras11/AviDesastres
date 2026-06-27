@@ -10,7 +10,7 @@ export default async function Home() {
   const supabase = createAdminClient();
   const [{ data: personas }, { data: insumos }, analytics] = await Promise.all([
     supabase.from("personas")
-      .select("id,nombre,cedula,edad,sexo,estado_salud,ubicacion,telefono_contacto,updated_at")
+      .select("id,nombre,cedula,edad,sexo,estado_salud,ubicacion,telefono_contacto,hospital_id,created_at,updated_at,hospitales(nombre)")
       .order("updated_at", { ascending: false }).limit(1000),
     supabase.from("insumos")
       .select("id,nombre,cantidad,unidad,prioridad,estado,hospitales(nombre)")

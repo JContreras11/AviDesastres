@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Img } from "@/components/Img";
 import { useRol } from "@/lib/rol";
+import { fechaHora, hace } from "@/lib/format";
 import {
   actualizarPersona, eliminarPersona, getPersona,
   actualizarInsumo, eliminarInsumo, cambiarEstadoInsumo, getInsumo, registrarDonacion,
@@ -76,9 +77,14 @@ export function PersonaDialog({ id, onClose, onChanged }: { id: string; onClose:
                 </select>
               </Campo>
             </div>
-            <Campo label="Ubicación"><Input readOnly={ro} value={p.ubicacion ?? ""} onChange={(e) => setP({ ...p, ubicacion: e.target.value })} className={inputCls} /></Campo>
+            <Campo label="Hospital / ubicación">
+              <Input readOnly={ro} value={p.hospitales?.nombre ?? p.ubicacion ?? ""} onChange={(e) => setP({ ...p, ubicacion: e.target.value })} className={inputCls} />
+            </Campo>
             <Campo label="Teléfono de contacto"><Input readOnly={ro} value={p.telefono_contacto ?? ""} onChange={(e) => setP({ ...p, telefono_contacto: e.target.value })} className={inputCls} /></Campo>
             <Campo label="Descripción física"><Input readOnly={ro} value={p.descripcion_fisica ?? ""} onChange={(e) => setP({ ...p, descripcion_fisica: e.target.value })} className={inputCls} /></Campo>
+            <p className="text-xs text-muted-foreground" title={fechaHora(p.created_at)}>
+              🕑 Cargado {hace(p.created_at)}{p.updated_at && p.updated_at !== p.created_at ? ` · actualizado ${hace(p.updated_at)}` : ""}
+            </p>
 
             {historial.length > 0 && (
               <><Separator /><div><p className="text-sm font-medium mb-1">Historial</p>

@@ -7,6 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { DataTable } from "./DataTable";
 import { PersonaDialog, InsumoDialog, HospitalDialog } from "./Detalle";
+import { cedulaReal, hace, descargarCSV } from "@/lib/format";
+
+const hospNombre = (r: any) => r.hospitales?.nombre ?? r.ubicacion ?? null;
 
 const PILL: Record<string, string> = {
   herido: "bg-amber-100 text-amber-800", desaparecido: "bg-red-100 text-red-700",
@@ -25,14 +28,17 @@ export function Datos({ personas, insumos, hospitales }: { personas: any[]; insu
   const cerrar = () => setSel(null);
   const cambiado = () => router.refresh();
 
+  const dash = (v: any) => (v == null || v === "" ? <span className="text-muted-foreground">—</span> : v);
   const colPersonas: ColumnDef<any>[] = [
     { accessorKey: "nombre", header: "Nombre", cell: (c) => <span className="font-medium">{c.getValue() as string}</span> },
-    { accessorKey: "cedula", header: "Cédula", cell: (c) => (c.getValue() as string) ?? "—" },
-    { accessorKey: "edad", header: "Edad" },
-    { accessorKey: "sexo", header: "Sexo" },
+    { id: "cedula", header: "Cédula", accessorFn: (r) => cedulaReal(r.cedula) ?? "", cell: (c) => dash(c.getValue()) },
+    { accessorKey: "edad", header: "Edad", cell: (c) => dash(c.getValue()) },
+    { accessorKey: "sexo", header: "Sexo", cell: (c) => dash(c.getValue()) },
     { accessorKey: "estado_salud", header: "Estado", filterFn: "equalsString", cell: (c) => <Pill v={c.getValue() as string} /> },
-    { accessorKey: "ubicacion", header: "Ubicación", cell: (c) => (c.getValue() as string) ?? "—" },
-    { accessorKey: "telefono_contacto", header: "Teléfono", cell: (c) => (c.getValue() as string) ?? "—" },
+    { id: "hospital", header: "Hospital", accessorFn: (r) => hospNombre(r) ?? "", cell: (c) => dash(c.getValue()) },
+    { accessorKey: "telefono_contacto", header: "Teléfono", cell: (c) => dash(c.getValue()) },
+    { id: "cargado", header: "Cargado", accessorFn: (r) => r.created_at ?? r.updated_at,
+      sortingFn: "datetime", cell: (c) => <span className="text-xs text-muted-foreground whitespace-nowrap">{hace(c.getValue() as string)}</span> },
   ];
   const colInsumos: ColumnDef<any>[] = [
     { accessorKey: "nombre", header: "Insumo", cell: (c) => <span className="font-medium">{c.getValue() as string}</span> },
@@ -64,9 +70,19 @@ export function Datos({ personas, insumos, hospitales }: { personas: any[]; insu
           <TabsTrigger value="hospitales">Hospitales ({hospitales.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="personas">
-          <DataTable columns={colPersonas} data={personas} placeholder="Buscar persona, cédula, ubicación…"
+          <DataTable columns={colPersonas} data={personas} placeholder="Buscar persona, cédula, hospital…"
             facets={[{ columnId: "estado_salud", label: "Estado", options: ["vivo", "herido", "desaparecido", "detenido", "fallecido", "desconocido"] }]}
-            onRowClick={(r) => setSel({ tipo: "persona", data: r })} />
+            onRowClick={(r) => setSel({ tipo: "persona", data: r })}
+            onExport={(rows) => descargarCSV("personas", [
+              { header: "Nombre", valor: (r) => r.nombre },
+              { header: "Cédula", valor: (r) => cedulaReal(r.cedula) ?? "" },
+              { header: "Edad", valor: (r) => r.edad ?? "" },
+              { header: "Sexo", valor: (r) => r.sexo ?? "" },
+              { header: "Estado", valor: (r) => r.estado_salud },
+              { header: "Hospital", valor: (r) => hospNombre(r) ?? "" },
+              { header: "Teléfono", valor: (r) => r.telefono_contacto ?? "" },
+              { header: "Cargado", valor: (r) => r.created_at ?? r.updated_at ?? "" },
+            ], rows)} />
         </TabsContent>
         <TabsContent value="insumos">
           <DataTable columns={colInsumos} data={insumos} placeholder="Buscar insumo…"
