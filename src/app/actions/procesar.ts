@@ -3,6 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import { procesarImagen } from "@/lib/ai/image";
 import { analizarDocumento, analizarTexto, transcribirAudio, type DocumentoAnalizado } from "@/lib/ai/vision";
+import { indexar, textoPersona, textoInsumo } from "@/lib/ai/indexar";
 import type { ExifMeta } from "@/lib/exif";
 
 export type ProcesarResult =
@@ -123,8 +124,9 @@ export async function guardarDocumento(input: {
   exif: ExifMeta;
   confianza: number;
   modelo: string;
+  notas?: string;
 }): Promise<ProcesarResult> {
-  return guardar(input.preview, input.confianza, input.modelo, input.foto, input.exif);
+  return guardar(input.preview, input.confianza, input.modelo, input.foto, input.exif, input.notas);
 }
 
 // Persiste un documento ya analizado (compartido entre foto y voz).
@@ -134,8 +136,10 @@ async function guardar(
   modelo: string,
   fotoPath: string | null,
   exif: ExifMeta,
+  notas?: string,
 ): Promise<ProcesarResult> {
   const supabase = createAdminClient();
+  const nota = notas?.trim() || null;
 
   // 1) Hospital detectado -> upsert (clave natural: nombre).
   let hospitalId: string | null = null;
@@ -172,6 +176,10 @@ async function guardar(
     }));
     const { data } = await supabase.from("insumos").insert(filas).select();
     insumosGuardados.push(...(data ?? []));
+    // Tokeniza cada insumo para búsqueda/chat.
+    for (const ins of data ?? [])
+      await indexar(supabase, "insumos", ins.id, textoInsumo(ins, d.hospital?.nombre ?? undefined, nota ?? undefined),
+        { hospital: d.hospital?.nombre ?? null, area: ins.area ?? null, estado: ins.estado });
   }
 
   // 3) Personas -> upsert por cédula normalizada (o nombre+edad) + historial.
@@ -190,7 +198,7 @@ async function guardar(
       descripcion_fisica: p.descripcion_fisica,
       telefono_contacto: p.telefono_contacto,
       contacto_nombre: p.contacto_nombre,
-      notas: p.notas,
+      notas: [p.notas, nota].filter(Boolean).join(" — ") || null,
       hospital_id: hospitalId,
       gps_lat: exif.gps_lat,
       gps_lng: exif.gps_lng,
@@ -231,7 +239,16 @@ async function guardar(
       const { data } = await supabase.from("personas").insert(base).select().single();
       personasGuardadas.push(data);
     }
+    const saved = personasGuardadas[personasGuardadas.length - 1];
+    if (saved?.id) await indexar(supabase, "personas", saved.id, textoPersona(saved), { hospital: d.hospital?.nombre ?? null });
   }
+
+  // Texto libre / contexto / transcripción: se guarda como documento buscable
+  // aunque no haya entidades extraídas (ej. pegar una lista o nota de voz).
+  const textoSuelto = [d.contexto, nota].filter(Boolean).join("\n");
+  if (textoSuelto.trim())
+    await indexar(supabase, "nota", crypto.randomUUID(), textoSuelto,
+      { tipo: d.tipo, hospital: d.hospital?.nombre ?? null, foto: fotoPath });
 
   const resumen =
     `${d.tipo.replace(/_/g, " ")}: ` +

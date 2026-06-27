@@ -13,6 +13,7 @@ export type ColaItem = {
   file?: File;
   audio?: Blob;
   texto?: string;
+  notas?: string; // texto libre que el usuario añade para enriquecer la búsqueda
   gps?: { lat: number; lng: number };
   // resultado del análisis (editable)
   preview?: DocumentoAnalizado;

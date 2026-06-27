@@ -27,10 +27,11 @@ const inputCls = "h-11 text-base text-foreground";
 const selectCls = "h-11 text-base border rounded-lg px-2 bg-background w-full";
 
 export function DocCard({
-  item, onChange, onGuardar, onDescartar,
+  item, onChange, onNotas, onGuardar, onDescartar,
 }: {
   item: ColaItem;
   onChange: (p: DocumentoAnalizado) => void;
+  onNotas: (notas: string) => void;
   onGuardar: () => void;
   onDescartar: () => void;
 }) {
@@ -158,6 +159,16 @@ export function DocCard({
           </div>
         </div>
       )}
+
+      <Campo label="📝 Texto adicional / contexto (mejora la búsqueda)">
+        <textarea
+          value={item.notas ?? ""}
+          onChange={(e) => onNotas(e.target.value)}
+          rows={2}
+          placeholder="Cualquier dato extra: de dónde viene la lista, observaciones, etc."
+          className="border rounded-lg p-2 text-base bg-background"
+        />
+      </Campo>
 
       <div className="flex gap-2 justify-end pt-1">
         <Button variant="ghost" size="lg" onClick={onDescartar}>Descartar</Button>

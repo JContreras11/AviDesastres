@@ -19,6 +19,7 @@ export function Captura() {
   const [grabando, setGrabando] = useState(false);
   const [segs, setSegs] = useState(0);
   const [drag, setDrag] = useState(false);
+  const [texto, setTexto] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const gps = useRef<{ lat: number; lng: number } | null>(null);
   const rec = useRef<MediaRecorder | null>(null);
@@ -114,7 +115,7 @@ export function Captura() {
       const res = await guardarDocumento({
         preview: it.preview, foto: it.foto ?? null,
         exif: it.exif ?? { gps_lat: null, gps_lng: null, foto_fecha: null },
-        confianza: it.confianza, modelo: it.modelo ?? "",
+        confianza: it.confianza, modelo: it.modelo ?? "", notas: it.notas,
       });
       if (res.ok) { upd(it.id, { estado: "guardado" }); toast.success(res.resumen); router.refresh(); }
       else upd(it.id, { estado: "listo", error: res.error });
@@ -157,6 +158,14 @@ export function Captura() {
     }
   }
 
+  function agregarTexto() {
+    const t = texto.trim();
+    if (!t) return;
+    setItems((xs) => [{ id: crypto.randomUUID(), fuente: "voz", nombre: "✍️ Texto pegado", estado: "pendiente", texto: t, confianza: 0 }, ...xs]);
+    setTexto("");
+    tick();
+  }
+
   const pendientes = items.filter((x) => ["pendiente", "analizando"].includes(x.estado)).length;
   const listos = items.filter((x) => x.estado === "listo").length;
 
@@ -191,6 +200,17 @@ export function Captura() {
         </span>
       </div>
 
+      {/* Pegar texto / lista (Excel, documento, etc.) */}
+      <details className="rounded-xl border p-3">
+        <summary className="cursor-pointer text-sm font-medium">✍️ Pegar texto o lista (Excel, documento…)</summary>
+        <div className="mt-3 flex flex-col gap-2">
+          <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={4}
+            placeholder="Pega aquí una lista de pacientes o insumos, o cualquier texto a registrar."
+            className="border rounded-lg p-2 text-base bg-background" />
+          <Button onClick={agregarTexto} disabled={!texto.trim()} className="self-end">Procesar texto</Button>
+        </div>
+      </details>
+
       {/* Barra de progreso / acciones */}
       {items.length > 0 && (
         <div className="flex items-center justify-between gap-2 text-sm">
@@ -209,6 +229,7 @@ export function Captura() {
             key={it.id}
             item={it}
             onChange={(preview: DocumentoAnalizado) => upd(it.id, { preview })}
+            onNotas={(notas: string) => upd(it.id, { notas })}
             onGuardar={() => guardar(it)}
             onDescartar={() => setItems((xs) => xs.filter((x) => x.id !== it.id))}
           />

@@ -48,6 +48,14 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
     fuentes = (await q).data ?? [];
   }
 
+  // 2b) Búsqueda de texto completo sobre TODO lo ingresado (personas, insumos,
+  // hospitales, notas/texto libre) — encuentra lo que el filtro estructurado no.
+  let docs: any[] = [];
+  try {
+    const { data } = await supabase.rpc("buscar_documentos", { q: pregunta, match_count: 10 });
+    docs = data ?? [];
+  } catch {}
+
   // 3) Redactar respuesta con el contexto recuperado.
   const r = await client.chat.completions.create({
     model: MODEL,
@@ -56,10 +64,11 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
         role: "system",
         content:
           "Eres Avi, la asistente de AviHelp en una emergencia humanitaria. Cálida pero concisa. Responde en español, " +
-          "SOLO con la información de los datos provistos. Si no hay coincidencias, dilo y sugiere reformular. " +
-          "Incluye estado, ubicación y teléfono de contacto si existen. NO inventes.",
+          "SOLO con la información de los datos provistos (registros + textos buscados). Si no hay coincidencias, dilo y sugiere reformular. " +
+          "Relaciona personas, hospitales, áreas e insumos cuando aporte. Incluye estado, ubicación y teléfono si existen. NO inventes.",
       },
-      { role: "user", content: `Pregunta: ${pregunta}\n\nDatos encontrados (JSON):\n${JSON.stringify(fuentes)}` },
+      { role: "user", content:
+        `Pregunta: ${pregunta}\n\nRegistros (JSON):\n${JSON.stringify(fuentes)}\n\nTextos relacionados:\n${docs.map((d) => `- ${d.contenido}`).join("\n")}` },
     ],
     temperature: 0.2,
   });
