@@ -26,7 +26,7 @@ create table if not exists personas (
   edad            int  check (edad is null or edad between 0 and 130),
   sexo            text check (sexo in ('M','F','O','desconocido')),
   ubicacion       text,                       -- texto libre (barrio, zona, hospital)
-  hospital_id     uuid references hospitales(id) on delete set null,
+  hospital_id     uuid,                        -- FK -> hospitales(id), añadida tras crear hospitales
   origen          text check (origen in ('local','visitante','desconocido')) default 'desconocido',
   estado_salud    text not null default 'desconocido'
                   check (estado_salud in ('vivo','herido','desaparecido','detenido','fallecido','desconocido')),
