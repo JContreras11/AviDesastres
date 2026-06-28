@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function RefugiosPage() {
   const a = createAdminClient();
   const sc = await getScope();
-  const { data: refugios } = await a.from("hospitales").select("id,nombre,ubicacion").eq("tipo", "refugio").order("nombre");
+  const { data: refugios } = await a.from("hospitales").select("id,nombre,ubicacion,gps_lat,gps_lng").eq("tipo", "refugio").order("nombre");
   const ids = (refugios ?? []).map((r: any) => r.id as string);
   const { data: needs } = ids.length
     ? await a.from("insumos").select("id,hospital_id,nombre,cantidad,unidad,area,prioridad,estado")
@@ -25,15 +25,6 @@ export default async function RefugiosPage() {
       <p className="text-sm text-muted-foreground mb-5">
         Lugares que resguardan personas en la emergencia. Cada refugio puede solicitar lo que necesita (insumos, comida, agua, ropa…) y tú coordinas la entrega.
       </p>
-
-      {/* Mapa embebido de la zona (referencia geográfica). */}
-      <div className="rounded-2xl overflow-hidden border mb-6 aspect-[16/10]">
-        <iframe
-          title="Mapa de La Guaira"
-          src="https://www.google.com/maps?q=La+Guaira,+Vargas,+Venezuela&z=12&output=embed"
-          className="w-full h-full" loading="lazy" referrerPolicy="no-referrer-when-downgrade"
-        />
-      </div>
 
       <Refugios refugios={refugios ?? []} needs={needs ?? []} gestiona={gestiona} />
 

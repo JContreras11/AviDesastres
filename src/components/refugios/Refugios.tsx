@@ -1,13 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { crearInsumo } from "@/app/actions/crud";
 
-type Refugio = { id: string; nombre: string; ubicacion: string | null };
+// Leaflet toca window -> solo en cliente.
+const MapaRefugios = dynamic(() => import("./MapaRefugios").then((m) => m.MapaRefugios), {
+  ssr: false,
+  loading: () => <div className="w-full h-full grid place-items-center text-sm text-muted-foreground">Cargando mapa…</div>,
+});
+
+type Refugio = { id: string; nombre: string; ubicacion: string | null; gps_lat?: number | null; gps_lng?: number | null };
 type Need = { id: string; hospital_id: string; nombre: string; cantidad: number | null; unidad: string | null; area: string | null; prioridad: string; estado: string };
 
 const CATEGORIAS = ["Medicinas", "Comida", "Agua", "Ropa", "Higiene", "Colchonetas", "Otro"];
@@ -19,18 +26,31 @@ const mapQ = (r: Refugio) => encodeURIComponent(`${r.nombre}, ${r.ubicacion ?? "
 
 export function Refugios({ refugios, needs, gestiona }: { refugios: Refugio[]; needs: Need[]; gestiona: "all" | string[] }) {
   const puede = (id: string) => gestiona === "all" || gestiona.includes(id);
+  const [sel, setSel] = useState<string | null>(null);
+
+  // Al elegir en el mapa, lleva la tarjeta a la vista.
+  function seleccionar(id: string) {
+    setSel(id);
+    document.getElementById(`refugio-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   return (
-    <div className="grid sm:grid-cols-2 gap-3">
-      {refugios.map((r) => (
-        <Tarjeta key={r.id} r={r} needs={needs.filter((n) => n.hospital_id === r.id)} gestiona={puede(r.id)} />
-      ))}
-      {refugios.length === 0 && <p className="text-sm text-muted-foreground">No hay refugios cargados aún.</p>}
-    </div>
+    <>
+      <div className="rounded-2xl overflow-hidden border mb-4 aspect-[16/10] sm:aspect-[2/1]">
+        <MapaRefugios pins={refugios} sel={sel} onSelect={seleccionar} />
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {refugios.map((r) => (
+          <Tarjeta key={r.id} r={r} needs={needs.filter((n) => n.hospital_id === r.id)} gestiona={puede(r.id)}
+            selected={sel === r.id} onSelect={() => setSel(r.id)} />
+        ))}
+        {refugios.length === 0 && <p className="text-sm text-muted-foreground">No hay refugios cargados aún.</p>}
+      </div>
+    </>
   );
 }
 
-function Tarjeta({ r, needs, gestiona }: { r: Refugio; needs: Need[]; gestiona: boolean }) {
+function Tarjeta({ r, needs, gestiona, selected, onSelect }: { r: Refugio; needs: Need[]; gestiona: boolean; selected: boolean; onSelect: () => void }) {
   const router = useRouter();
   const [abrir, setAbrir] = useState(false);
   const [, refrescar] = useTransition();
@@ -52,12 +72,13 @@ function Tarjeta({ r, needs, gestiona }: { r: Refugio; needs: Need[]; gestiona: 
     refrescar(() => router.refresh());
   }
 
+  const tieneCoord = r.gps_lat != null && r.gps_lng != null;
   return (
-    <div className="rounded-2xl border bg-card p-4 flex flex-col gap-2">
-      <div>
-        <p className="font-semibold leading-tight">{r.nombre}</p>
-        {r.ubicacion && <p className="text-sm text-muted-foreground">📍 {r.ubicacion}</p>}
-      </div>
+    <div id={`refugio-${r.id}`} className={`rounded-2xl border bg-card p-4 flex flex-col gap-2 scroll-mt-4 transition ${selected ? "ring-2 ring-primary" : ""}`}>
+      <button type="button" onClick={onSelect} className="text-left" disabled={!tieneCoord} title={tieneCoord ? "Ver en el mapa" : ""}>
+        <p className="font-semibold leading-tight">{r.nombre}{tieneCoord ? " 📍" : ""}</p>
+        {r.ubicacion && <p className="text-sm text-muted-foreground">{r.ubicacion}</p>}
+      </button>
 
       {needs.length > 0 ? (
         <div className="flex flex-col gap-0.5">
