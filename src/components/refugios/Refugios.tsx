@@ -56,7 +56,7 @@ export function Refugios({ refugios, needs, gestiona }: { refugios: Refugio[]; n
         placeholder="🔎 Buscar refugio por nombre, zona, parroquia…"
         className="w-full h-11 px-3 mb-3 rounded-xl border bg-background text-base"
       />
-      <div className="rounded-2xl overflow-hidden border mb-4 aspect-[16/10] sm:aspect-[2/1]">
+      <div className="relative z-0 isolate rounded-2xl overflow-hidden border mb-4 aspect-[16/10] sm:aspect-[2/1]">
         <MapaRefugios pins={refugios} sel={sel} onSelect={seleccionar} visibleIds={visibleIds} />
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
