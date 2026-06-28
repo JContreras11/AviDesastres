@@ -7,25 +7,34 @@ import { getAnalytics } from "@/app/actions/analytics";
 // (eso colgaba teléfonos lentos). Cada página trae ~25 filas + total.
 
 export type Pagina = { rows: any[]; total: number };
-export type Args = { page?: number; pageSize?: number; q?: string; filtros?: Record<string, string> };
+export type Orden = { col: string; dir: "asc" | "desc" };
+export type Args = { page?: number; pageSize?: number; q?: string; filtros?: Record<string, string>; orden?: Orden | null };
 
 function rango(page = 0, pageSize = 25) {
   return [page * pageSize, page * pageSize + pageSize - 1] as const;
 }
 const like = (s: string) => s.replace(/[%,()]/g, " ").trim();
+// Orden seguro: solo columnas en la whitelist (evita inyección).
+function aplicarOrden(query: any, orden: Orden | null | undefined, permitidas: string[], def: Orden) {
+  const o = orden && permitidas.includes(orden.col) ? orden : def;
+  return query.order(o.col, { ascending: o.dir === "asc" });
+}
 
-export async function listarPersonas({ page = 0, pageSize = 25, q = "", filtros = {} }: Args = {}): Promise<Pagina> {
+export async function listarPersonas({ page = 0, pageSize = 25, q = "", filtros = {}, orden = null }: Args = {}): Promise<Pagina> {
   const s = createAdminClient();
   let query = s.from("personas")
     .select("id,nombre,cedula,edad,sexo,estado_salud,ubicacion,telefono_contacto,hospital_id,created_at,updated_at,hospitales(nombre)", { count: "exact" });
   if (q.trim()) query = query.or(`nombre.ilike.%${like(q)}%,cedula.ilike.%${like(q)}%,ubicacion.ilike.%${like(q)}%`);
   if (filtros.estado_salud) query = query.eq("estado_salud", filtros.estado_salud);
+  query = aplicarOrden(query, orden,
+    ["nombre", "cedula", "edad", "sexo", "estado_salud", "ubicacion", "telefono_contacto", "created_at"],
+    { col: "updated_at", dir: "desc" });
   const [from, to] = rango(page, pageSize);
-  const { data, count } = await query.order("updated_at", { ascending: false }).range(from, to);
+  const { data, count } = await query.range(from, to);
   return { rows: data ?? [], total: count ?? 0 };
 }
 
-export async function listarInsumos({ page = 0, pageSize = 25, q = "", filtros = {} }: Args = {}): Promise<Pagina> {
+export async function listarInsumos({ page = 0, pageSize = 25, q = "", filtros = {}, orden = null }: Args = {}): Promise<Pagina> {
   const s = createAdminClient();
   let query = s.from("insumos")
     .select("id,nombre,cantidad,unidad,presentacion,area,prioridad,estado,created_at,hospitales(nombre)", { count: "exact" });
@@ -33,8 +42,11 @@ export async function listarInsumos({ page = 0, pageSize = 25, q = "", filtros =
   if (filtros.estado) query = query.eq("estado", filtros.estado);
   if (filtros.prioridad) query = query.eq("prioridad", filtros.prioridad);
   if (filtros.area) query = query.eq("area", filtros.area);
+  query = aplicarOrden(query, orden,
+    ["nombre", "cantidad", "presentacion", "area", "prioridad", "estado", "created_at"],
+    { col: "created_at", dir: "desc" });
   const [from, to] = rango(page, pageSize);
-  const { data, count } = await query.order("created_at", { ascending: false }).range(from, to);
+  const { data, count } = await query.range(from, to);
   return { rows: data ?? [], total: count ?? 0 };
 }
 

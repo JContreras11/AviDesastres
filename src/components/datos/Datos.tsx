@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import type { ColumnDef } from "@tanstack/react-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -29,6 +28,7 @@ const Pill = ({ v }: { v: string }) => (
 );
 
 export type Counts = { personas: number; insumos: number; hospitales: number; acopio: number };
+type Col = { id?: string; accessorKey?: string; accessorFn?: (r: any) => any; header: string; sortKey?: string; cell?: (c: { getValue: () => any }) => any };
 
 export function Datos({ counts }: { counts: Counts }) {
   const qc = useQueryClient();
@@ -42,15 +42,16 @@ export function Datos({ counts }: { counts: Counts }) {
   }, []);
 
   // Estado de paginación/búsqueda por lista (servidor).
-  const [pPage, setPPage] = useState(0); const [pQ, setPQ] = useState(""); const [pFil, setPFil] = useState<Record<string, string>>({});
-  const [iPage, setIPage] = useState(0); const [iQ, setIQ] = useState(""); const [iFil, setIFil] = useState<Record<string, string>>({});
+  type Orden = { col: string; dir: "asc" | "desc" } | null;
+  const [pPage, setPPage] = useState(0); const [pQ, setPQ] = useState(""); const [pFil, setPFil] = useState<Record<string, string>>({}); const [pOrd, setPOrd] = useState<Orden>(null);
+  const [iPage, setIPage] = useState(0); const [iQ, setIQ] = useState(""); const [iFil, setIFil] = useState<Record<string, string>>({}); const [iOrd, setIOrd] = useState<Orden>(null);
 
   const personasQ = useQuery({
-    queryKey: ["personas", pPage, pQ, pFil], queryFn: () => listarPersonas({ page: pPage, pageSize: PAGE_SIZE, q: pQ, filtros: pFil }),
+    queryKey: ["personas", pPage, pQ, pFil, pOrd], queryFn: () => listarPersonas({ page: pPage, pageSize: PAGE_SIZE, q: pQ, filtros: pFil, orden: pOrd }),
     enabled: tab === "personas", placeholderData: keepPreviousData,
   });
   const insumosQ = useQuery({
-    queryKey: ["insumos", iPage, iQ, iFil], queryFn: () => listarInsumos({ page: iPage, pageSize: PAGE_SIZE, q: iQ, filtros: iFil }),
+    queryKey: ["insumos", iPage, iQ, iFil, iOrd], queryFn: () => listarInsumos({ page: iPage, pageSize: PAGE_SIZE, q: iQ, filtros: iFil, orden: iOrd }),
     enabled: tab === "insumos", placeholderData: keepPreviousData,
   });
   const hospitalesQ = useQuery({ queryKey: ["hospitales"], queryFn: listarHospitales, enabled: tab === "hospitales" });
@@ -64,31 +65,31 @@ export function Datos({ counts }: { counts: Counts }) {
 
   const dash = (v: any) => (v == null || v === "" ? <span className="text-muted-foreground">—</span> : v);
 
-  const colPersonas: ColumnDef<any>[] = [
+  const colPersonas: Col[] = [
     { accessorKey: "nombre", header: "Nombre", cell: (c) => <span className="font-medium">{c.getValue() as string}</span> },
-    { id: "cedula", header: "Cédula", accessorFn: (r) => cedulaReal(r.cedula) ?? "", cell: (c) => dash(c.getValue()) },
+    { id: "cedula", sortKey: "cedula", header: "Cédula", accessorFn: (r) => cedulaReal(r.cedula) ?? "", cell: (c) => dash(c.getValue()) },
     { accessorKey: "edad", header: "Edad", cell: (c) => dash(c.getValue()) },
     { accessorKey: "sexo", header: "Sexo", cell: (c) => dash(c.getValue()) },
     { accessorKey: "estado_salud", header: "Estado", cell: (c) => <Pill v={c.getValue() as string} /> },
-    { id: "zona", header: "Zona / ubicación", accessorFn: (r) => r.ubicacion ?? "",
+    { id: "zona", sortKey: "ubicacion", header: "Zona / ubicación", accessorFn: (r) => r.ubicacion ?? "",
       cell: (c) => c.getValue() ? <span className="font-medium whitespace-nowrap">📍 {c.getValue() as string}</span> : dash("") },
     { id: "hospital", header: "Hospital", accessorFn: (r) => r.hospitales?.nombre ?? "", cell: (c) => dash(c.getValue()) },
     { accessorKey: "telefono_contacto", header: "Teléfono", cell: (c) => dash(c.getValue()) },
-    { id: "cargado", header: "Cargado", accessorFn: (r) => r.created_at ?? r.updated_at,
+    { id: "cargado", sortKey: "created_at", header: "Cargado", accessorFn: (r) => r.created_at ?? r.updated_at,
       cell: (c) => <span className="text-xs text-muted-foreground whitespace-nowrap">{hace(c.getValue() as string)}</span> },
   ];
-  const colInsumos: ColumnDef<any>[] = [
+  const colInsumos: Col[] = [
     { accessorKey: "nombre", header: "Insumo", cell: (c) => <span className="font-medium">{c.getValue() as string}</span> },
-    { id: "cant", header: "Cant.", accessorFn: (r) => `${r.cantidad ?? ""} ${r.unidad ?? ""}`.trim() || "", cell: (c) => dash(c.getValue()) },
+    { id: "cant", sortKey: "cantidad", header: "Cant.", accessorFn: (r) => `${r.cantidad ?? ""} ${r.unidad ?? ""}`.trim() || "", cell: (c) => dash(c.getValue()) },
     { accessorKey: "presentacion", header: "Tipo", cell: (c) => dash(c.getValue()) },
     { accessorKey: "area", header: "Servicio", cell: (c) => c.getValue() ? <span className="font-medium whitespace-nowrap">{c.getValue() as string}</span> : dash("") },
     { id: "hospital", header: "Hospital", accessorFn: (r) => r.hospitales?.nombre ?? "", cell: (c) => dash(c.getValue()) },
     { accessorKey: "prioridad", header: "Prioridad", cell: (c) => <span className="capitalize">{c.getValue() as string}</span> },
     { accessorKey: "estado", header: "Estado", cell: (c) => <Pill v={c.getValue() as string} /> },
-    { id: "cargado", header: "Solicitado", accessorFn: (r) => r.created_at,
+    { id: "cargado", sortKey: "created_at", header: "Solicitado", accessorFn: (r) => r.created_at,
       cell: (c) => <span className="text-xs text-muted-foreground whitespace-nowrap">{hace(c.getValue() as string)}</span> },
   ];
-  const colHosp: ColumnDef<any>[] = [
+  const colHosp: Col[] = [
     { accessorKey: "nombre", header: "Hospital", cell: (c) => <span className="font-medium">{c.getValue() as string}</span> },
     { accessorKey: "ubicacion", header: "Ubicación", cell: (c) => (c.getValue() as string) ?? "—" },
     { accessorKey: "personas", header: "Personas" },
@@ -101,7 +102,7 @@ export function Datos({ counts }: { counts: Counts }) {
       <div className="flex items-center gap-2 w-28"><Progress value={c.getValue() as number} className="h-2" /><span className="text-xs">{c.getValue() as number}%</span></div>
     ) },
   ];
-  const colCentros: ColumnDef<any>[] = [
+  const colCentros: Col[] = [
     { accessorKey: "nombre", header: "Centro", cell: (c) => <span className="font-medium">{c.getValue() as string}</span> },
     { accessorKey: "zona", header: "Zona", cell: (c) => c.getValue() ? <span className="font-medium whitespace-nowrap">📍 {c.getValue() as string}</span> : dash("") },
     { accessorKey: "recibe", header: "Recibe", cell: (c) => dash(c.getValue()) },
@@ -114,6 +115,7 @@ export function Datos({ counts }: { counts: Counts }) {
   const personasServer: ServerCtl = {
     total: personasQ.data?.total ?? counts.personas, page: pPage, pageSize: PAGE_SIZE, onPage: setPPage,
     q: pQ, onQ: (s) => { setPQ(s); setPPage(0); }, filtros: pFil, onFiltro: (id, v) => { setPFil((f) => ({ ...f, [id]: v })); setPPage(0); },
+    orden: { col: pOrd?.col ?? null, dir: pOrd?.dir ?? "asc" }, onOrden: (col, dir) => { setPOrd({ col, dir }); setPPage(0); },
     loading: personasQ.isFetching,
     onExportAll: async () => {
       const { rows } = await listarPersonas({ page: 0, pageSize: 100000, q: pQ, filtros: pFil });
@@ -129,6 +131,7 @@ export function Datos({ counts }: { counts: Counts }) {
   const insumosServer: ServerCtl = {
     total: insumosQ.data?.total ?? counts.insumos, page: iPage, pageSize: PAGE_SIZE, onPage: setIPage,
     q: iQ, onQ: (s) => { setIQ(s); setIPage(0); }, filtros: iFil, onFiltro: (id, v) => { setIFil((f) => ({ ...f, [id]: v })); setIPage(0); },
+    orden: { col: iOrd?.col ?? null, dir: iOrd?.dir ?? "asc" }, onOrden: (col, dir) => { setIOrd({ col, dir }); setIPage(0); },
     loading: insumosQ.isFetching,
     onExportAll: async () => {
       const { rows } = await listarInsumos({ page: 0, pageSize: 100000, q: iQ, filtros: iFil });

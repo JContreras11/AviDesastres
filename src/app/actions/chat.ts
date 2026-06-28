@@ -2,6 +2,16 @@
 
 import OpenAI from "openai";
 import { createAdminClient } from "@/lib/supabase/server";
+import { transcribirAudio } from "@/lib/ai/vision";
+
+// Transcribe audio del micrófono a texto (para hablarle al chat).
+export async function transcribirVoz(formData: FormData): Promise<string> {
+  const file = formData.get("audio");
+  if (!(file instanceof File) || file.size === 0) return "";
+  const buf = Buffer.from(await file.arrayBuffer());
+  const fmt = (file.type.split("/")[1] ?? "webm").split(";")[0].replace("x-", "").replace("mpeg", "mp3");
+  try { return (await transcribirAudio(buf.toString("base64"), fmt)).trim(); } catch { return ""; }
+}
 
 const client = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,

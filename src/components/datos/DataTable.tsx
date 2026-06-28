@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type Facet = { columnId: string; label: string; options: string[] };
+type Dir = "asc" | "desc";
 
-// Tabla PLANA (sin tanstack ni base-ui). Los datos grandes ya vienen paginados
-// del servidor; las listas chicas se filtran/paginan aquí en memoria.
+// Modo servidor: paginación/búsqueda/filtros/orden los maneja el padre.
 export type ServerCtl = {
   total: number;
   page: number;
@@ -18,12 +18,14 @@ export type ServerCtl = {
   onQ: (s: string) => void;
   filtros: Record<string, string>;
   onFiltro: (id: string, v: string) => void;
+  orden?: { col: string | null; dir: Dir };
+  onOrden?: (col: string, dir: Dir) => void;
   loading?: boolean;
   onExportAll?: () => void;
 };
 
-// Columnas compatibles con el formato previo (accessorKey/accessorFn/header/cell).
-type Col = { id?: string; accessorKey?: string; accessorFn?: (r: any) => any; header: string; cell?: (c: { getValue: () => any }) => any };
+// Columnas compatibles con el formato previo + sortKey opcional (columna DB para ordenar).
+type Col = { id?: string; accessorKey?: string; accessorFn?: (r: any) => any; header: string; sortKey?: string; cell?: (c: { getValue: () => any }) => any };
 
 const valueOf = (col: Col, row: any) =>
   col.accessorFn ? col.accessorFn(row) : col.accessorKey ? row[col.accessorKey] : undefined;
@@ -31,6 +33,7 @@ const renderCell = (col: Col, row: any) => {
   const v = valueOf(col, row);
   return col.cell ? col.cell({ getValue: () => v }) : (v as any);
 };
+const sortKeyOf = (col: Col) => col.sortKey ?? col.accessorKey ?? null;
 
 const CLIENT_PAGE = 20;
 
@@ -49,16 +52,38 @@ export function DataTable<T>({
   const [q, setQ] = useState("");
   const [colF, setColF] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
+  const [sortC, setSortC] = useState<{ key: string; dir: Dir } | null>(null);
   const [busqLocal, setBusqLocal] = useState(server?.q ?? "");
 
-  // Debounce de búsqueda en modo servidor.
+  // Debounce solo al cambiar el texto (no en cada render -> antes reseteaba la página).
+  const onQRef = useRef(server?.onQ);
+  onQRef.current = server?.onQ;
+  const primeraVez = useRef(true);
   useEffect(() => {
     if (!server) return;
-    const t = setTimeout(() => server.onQ(busqLocal), 350);
+    if (primeraVez.current) { primeraVez.current = false; return; }
+    const t = setTimeout(() => onQRef.current?.(busqLocal), 350);
     return () => clearTimeout(t);
-  }, [busqLocal, server]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busqLocal]);
+
+  function clickHeader(col: Col) {
+    const key = sortKeyOf(col);
+    if (!key) return;
+    const dir: Dir = sortC?.key === key && sortC.dir === "asc" ? "desc" : "asc";
+    if (server) { server.onOrden?.(key, dir); }
+    else { setSortC({ key, dir }); }
+  }
+  const flecha = (col: Col) => {
+    const key = sortKeyOf(col);
+    const active = server ? server.orden?.col === key : sortC?.key === key;
+    if (!active) return "";
+    const dir = server ? server.orden?.dir : sortC?.dir;
+    return dir === "asc" ? " ▲" : " ▼";
+  };
 
   let rows: any[] = data as any[];
+  let filtered: any[] = data as any[];
   let total: number, pageCount: number, pageIndex: number;
   let prev: () => void, next: () => void, canPrev: boolean, canNext: boolean;
 
@@ -72,7 +97,7 @@ export function DataTable<T>({
     canNext = server.page < pageCount - 1;
   } else {
     const ql = q.trim().toLowerCase();
-    const filtered = (data as any[]).filter((row) => {
+    filtered = (data as any[]).filter((row) => {
       if (ql && !cols.some((c) => String(valueOf(c, row) ?? "").toLowerCase().includes(ql))) return false;
       for (const [id, v] of Object.entries(colF)) {
         if (!v) continue;
@@ -81,6 +106,16 @@ export function DataTable<T>({
       }
       return true;
     });
+    if (sortC) {
+      const col = cols.find((c) => sortKeyOf(c) === sortC.key);
+      if (col) {
+        filtered = [...filtered].sort((a, b) => {
+          const va = valueOf(col, a), vb = valueOf(col, b);
+          let cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va ?? "").localeCompare(String(vb ?? ""));
+          return sortC.dir === "asc" ? cmp : -cmp;
+        });
+      }
+    }
     total = filtered.length;
     pageCount = Math.max(1, Math.ceil(total / CLIENT_PAGE));
     pageIndex = Math.min(page, pageCount - 1);
@@ -110,7 +145,7 @@ export function DataTable<T>({
         ))}
         {onExport && (
           <Button variant="outline" className="h-11"
-            onClick={() => server?.onExportAll ? server.onExportAll() : onExport(rows as T[])}>
+            onClick={() => server?.onExportAll ? server.onExportAll() : onExport(filtered as T[])}>
             ⬇ Exportar
           </Button>
         )}
@@ -121,7 +156,18 @@ export function DataTable<T>({
         <Table>
           <TableHeader>
             <TableRow>
-              {cols.map((c, i) => <TableHead key={i} className="whitespace-nowrap font-semibold">{c.header}</TableHead>)}
+              {cols.map((c, i) => {
+                const sortable = !!sortKeyOf(c);
+                return (
+                  <TableHead key={i} className="whitespace-nowrap">
+                    {sortable ? (
+                      <button className="inline-flex items-center gap-1 font-semibold hover:text-foreground" onClick={() => clickHeader(c)}>
+                        {c.header}{flecha(c)}
+                      </button>
+                    ) : <span className="font-semibold">{c.header}</span>}
+                  </TableHead>
+                );
+              })}
             </TableRow>
           </TableHeader>
           <TableBody>

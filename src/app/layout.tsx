@@ -5,6 +5,8 @@ import { PWA } from "@/components/PWA";
 import { Header } from "@/components/Brand";
 import { RolProvider, type Sesion } from "@/lib/rol";
 import { Providers } from "@/components/Providers";
+import { ChatProvider } from "@/lib/chat-store";
+import { ChatWidget } from "@/components/ChatWidget";
 import { getSesion } from "@/lib/supabase/server";
 import "./globals.css";
 
@@ -48,8 +50,11 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <RolProvider sesion={sesion}>
           <Providers>
-            {s && <div className="print:hidden contents"><Header /></div>}
-            {children}
+            <ChatProvider>
+              {s && <div className="print:hidden contents"><Header /></div>}
+              {children}
+              {s && <ChatWidget />}
+            </ChatProvider>
           </Providers>
         </RolProvider>
         <PWA />

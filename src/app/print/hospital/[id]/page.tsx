@@ -39,7 +39,7 @@ export default async function PrintHospital({ params }: { params: Promise<{ id: 
         <p>No hay insumos pendientes para este hospital.</p>
       ) : (
         Object.entries(porArea).map(([area, items]) => (
-          <section key={area} className="mb-4 break-inside-avoid">
+          <section key={area} className="mb-4">
             <h2 className="text-base font-bold uppercase border-b border-gray-400 mb-1">{area}</h2>
             <table className="w-full text-sm">
               <thead>
@@ -51,7 +51,7 @@ export default async function PrintHospital({ params }: { params: Promise<{ id: 
                 {(items as any[])
                   .sort((a, b) => (PRIO_ORD[a.prioridad] ?? 9) - (PRIO_ORD[b.prioridad] ?? 9))
                   .map((i, n) => (
-                    <tr key={n} className="border-b border-gray-200">
+                    <tr key={n} className="border-b border-gray-200 break-inside-avoid">
                       <td className="py-1">{n + 1}</td>
                       <td>{i.nombre}</td>
                       <td>{i.cantidad ?? ""}{i.unidad ? ` ${i.unidad}` : ""}</td>

@@ -1,0 +1,37 @@
+"use client";
+
+import { useState } from "react";
+import { usePathname } from "next/navigation";
+import { ChatPanel } from "@/components/ChatPanel";
+import { Logo } from "@/components/Brand";
+
+// Burbuja flotante bottom-right que despliega el chat. Misma conversación que /chat.
+// Oculto en la propia página /chat (ahí se ve completo) y en login/print.
+export function ChatWidget() {
+  const [open, setOpen] = useState(false);
+  const path = usePathname();
+  if (path === "/chat" || path === "/login" || path.startsWith("/print")) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2 print:hidden">
+      {open && (
+        <div className="w-[min(92vw,380px)] h-[min(70vh,560px)] rounded-2xl border bg-card shadow-2xl overflow-hidden flex flex-col">
+          <div className="flex items-center gap-2 p-3 border-b bg-gradient-to-r from-primary/10 to-transparent">
+            <Logo size={28} />
+            <div className="flex-1 leading-tight">
+              <p className="text-sm font-bold">Avi</p>
+              <p className="text-[11px] text-muted-foreground">Tu asistente en la emergencia</p>
+            </div>
+            <button onClick={() => setOpen(false)} className="size-7 rounded-full hover:bg-muted text-muted-foreground" title="Cerrar">✕</button>
+          </div>
+          <ChatPanel className="flex-1 min-h-0" />
+        </div>
+      )}
+      <button onClick={() => setOpen((o) => !o)}
+        className="size-14 rounded-full bg-primary text-white text-2xl shadow-lg hover:opacity-90 active:scale-95 transition"
+        title="Avi — chat" aria-label="Abrir chat">
+        {open ? "✕" : "💬"}
+      </button>
+    </div>
+  );
+}
