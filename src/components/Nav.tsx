@@ -1,12 +1,10 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Menu } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { UserMenu } from "@/components/UserMenu";
-import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
 
 // Enlaces de navegación. En escritorio van inline; en móvil entran al menú hamburguesa.
 const LINKS = [
@@ -17,6 +15,16 @@ const LINKS = [
 ];
 
 export function Nav() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
   return (
     <nav className="flex items-center gap-1 text-sm">
       {/* Escritorio: enlaces inline */}
@@ -30,18 +38,20 @@ export function Nav() {
       <UserMenu />
 
       {/* Móvil: enlaces dentro de una hamburguesa */}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className="sm:hidden flex items-center justify-center size-9 rounded-lg hover:bg-muted"
-          aria-label="Menú">
+      <div className="relative sm:hidden" ref={ref}>
+        <button onClick={() => setOpen((v) => !v)} aria-label="Menú"
+          className="flex items-center justify-center size-9 rounded-lg hover:bg-muted">
           <Menu className="size-5" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          {LINKS.map((l) => (
-            <DropdownMenuItem key={l.href} render={<Link href={l.href} />}>{l.label}</DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </button>
+        {open && (
+          <div className="absolute right-0 mt-2 w-44 rounded-xl border bg-card shadow-lg z-50 p-1">
+            {LINKS.map((l) => (
+              <Link key={l.href} href={l.href} onClick={() => setOpen(false)}
+                className="block px-3 py-2 text-sm rounded-md hover:bg-muted">{l.label}</Link>
+            ))}
+          </div>
+        )}
+      </div>
     </nav>
   );
 }
