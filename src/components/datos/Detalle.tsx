@@ -215,6 +215,10 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
                 ))}
               </div></>
             )}
+
+            <p className="text-xs text-muted-foreground border-t pt-2 mt-1 leading-snug">
+              No nos hacemos responsables del tiempo de cambio de estatus: depende de la gestión de los encargados de cada centro. AviHelp es un puente de comunicación; la repartición se gestiona en cada centro de acopio según la necesidad reflejada.
+            </p>
           </div>
         )}
         {editable && (
