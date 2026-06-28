@@ -22,6 +22,7 @@ export function Captura() {
   const [drag, setDrag] = useState(false);
   const [texto, setTexto] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
   const gps = useRef<{ lat: number; lng: number } | null>(null);
   const rec = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -175,22 +176,25 @@ export function Captura() {
 
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col gap-5">
-      {/* Zona de captura */}
+      {/* Zona de captura. Inputs nativos: galería/archivos (sin capture) y cámara (capture). */}
+      <input ref={fileRef} type="file" accept="image/*" multiple hidden
+        onChange={(e) => { if (e.target.files?.length) agregarFotos(e.target.files); e.target.value = ""; }} />
+      <input ref={camRef} type="file" accept="image/*" capture="environment" hidden
+        onChange={(e) => { if (e.target.files?.length) agregarFotos(e.target.files); e.target.value = ""; }} />
       <div
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => { e.preventDefault(); setDrag(false); if (e.dataTransfer.files?.length) agregarFotos(e.dataTransfer.files); }}
-        onClick={() => fileRef.current?.click()}
-        className={`cursor-pointer rounded-2xl border-2 border-dashed p-8 text-center transition
-          ${drag ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary"}`}
+        className={`rounded-2xl border-2 border-dashed p-6 text-center transition
+          ${drag ? "border-primary bg-primary/5" : "border-muted-foreground/25"}`}
       >
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple hidden
-          onChange={(e) => { if (e.target.files?.length) agregarFotos(e.target.files); e.target.value = ""; }} />
         <div className="text-4xl mb-2">📷</div>
-        <p className="font-medium">Toca o arrastra una o varias fotos</p>
-        <p className="text-sm text-muted-foreground mt-1">
-          Cada documento se procesa por separado. Revisa y corrige antes de guardar.
-        </p>
+        <p className="font-medium">Sube fotos de listas, cédulas o insumos</p>
+        <p className="text-sm text-muted-foreground mt-1 mb-4">Elige de tu galería o toma una foto. Puedes revisar y quitar antes de guardar.</p>
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          <Button size="lg" type="button" onClick={() => fileRef.current?.click()}>🖼️ Elegir fotos</Button>
+          <Button size="lg" type="button" variant="outline" onClick={() => camRef.current?.click()}>📷 Tomar foto</Button>
+        </div>
       </div>
 
       {/* Micrófono */}

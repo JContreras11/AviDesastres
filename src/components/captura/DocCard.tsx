@@ -55,7 +55,10 @@ export function DocCard({
             <p className={`text-sm ${e.cls}`}>{e.txt}</p>
           </div>
         </div>
-        {item.estado === "error" && <Button variant="ghost" onClick={onDescartar}>Quitar</Button>}
+        {item.estado !== "guardado" && (
+          <button type="button" onClick={onDescartar} title="Quitar"
+            className="shrink-0 size-8 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition">✕</button>
+        )}
       </Card>
     );
   }
