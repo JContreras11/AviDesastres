@@ -52,8 +52,8 @@ export default async function RootLayout({
         <RolProvider sesion={sesion}>
           <Providers>
             <ChatProvider>
+              {s?.impersonando && <ImpersonationBanner nombre={s.nombre} rol={s.rol} />}
               {s && <div className="print:hidden contents"><Header /></div>}
-              {s && <ImpersonationBanner />}
               {children}
               {s && <ChatWidget />}
             </ChatProvider>

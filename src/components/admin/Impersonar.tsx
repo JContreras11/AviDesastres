@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +13,6 @@ const ROL_LABEL: Record<string, string> = {
 };
 
 export function Impersonar({ usuarios }: { usuarios: U[] }) {
-  const router = useRouter();
   const [q, setQ] = useState("");
   const [cargando, setCargando] = useState<string | null>(null);
 
@@ -26,10 +24,9 @@ export function Impersonar({ usuarios }: { usuarios: U[] }) {
   async function ver(u: U) {
     setCargando(u.id);
     const r = await impersonar(u.id);
-    setCargando(null);
-    if (!r.ok) { toast.error((r as any).error); return; }
-    router.push("/");
-    router.refresh();
+    if (!r.ok) { setCargando(null); toast.error((r as any).error); return; }
+    // Recarga dura: entra de una a la vista del usuario impersonado.
+    window.location.href = "/";
   }
 
   return (
