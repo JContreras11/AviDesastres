@@ -56,8 +56,9 @@ function DialogContent({
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          // [&>*]:min-w-0 evita que contenido ancho (selects con opciones largas, listas) estire el diálogo y desborde en móvil.
-          "relative z-10 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 shadow-xl outline-none [&>*]:min-w-0 sm:max-w-sm",
+          // [&>*]:min-w-0: contenido ancho no estira el diálogo (desborde horizontal en móvil).
+          // max-h + overflow-y-auto: diálogos altos hacen scroll interno (botón Guardar siempre alcanzable).
+          "relative z-10 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 shadow-xl outline-none [&>*]:min-w-0 sm:max-w-sm",
           className
         )}
         {...props}
