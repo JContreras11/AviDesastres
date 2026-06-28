@@ -17,6 +17,7 @@ export function Header() {
         </Link>
         <nav className="flex items-center gap-1 text-sm">
           <Link href="/" className="px-2.5 py-1.5 rounded-lg hover:bg-muted hidden sm:block">Inicio</Link>
+          <Link href="/refugios" className="px-2.5 py-1.5 rounded-lg hover:bg-muted">Refugios</Link>
           <Link href="/dashboard" className="px-2.5 py-1.5 rounded-lg hover:bg-muted">Panel</Link>
           <Link href="/chat" className="px-2.5 py-1.5 rounded-lg hover:bg-muted">Avi</Link>
           <NotificationBell />

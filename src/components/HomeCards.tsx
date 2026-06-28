@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRol } from "@/lib/rol";
 
 type Counts = { hospitales: number; insumos: number; personas: number; acopio: number };
@@ -32,6 +33,14 @@ export function HomeCards({ counts }: { counts: Counts }) {
 
   return (
     <div className="mt-10 grid grid-cols-2 gap-3 sm:gap-4">
+      <Link
+        href="/refugios"
+        className="flex flex-col items-start gap-1 rounded-2xl bg-gradient-to-br ring-1 p-4 sm:p-6 text-left transition active:scale-[0.98] hover:shadow-md from-sky-500/15 to-sky-500/5 ring-sky-500/20"
+      >
+        <span className="text-3xl sm:text-4xl">🏠</span>
+        <span className="text-base sm:text-lg font-bold leading-tight">Refugios La Guaira</span>
+        <span className="text-xs text-muted-foreground">Ubicaciones y cómo llegar</span>
+      </Link>
       {orden.map((k) => {
         const c = CARDS[k];
         return (
