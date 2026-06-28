@@ -15,20 +15,23 @@ function pinHtml(activo: boolean) {
 
 // Contenido del globito (siempre visible): nombre + tipo + dirección.
 function tipHtml(p: Pin) {
-  return `<div style="max-width:200px;font-size:12px;line-height:1.3">
+  return `<div style="font-size:12px;line-height:1.3">
     <div style="font-weight:700">${esc(p.nombre)}</div>
     ${p.tipo ? `<div style="color:#2563eb;font-weight:500">${TIPO_LABEL[p.tipo] ?? esc(p.tipo)}</div>` : ""}
     ${p.ubicacion ? `<div style="color:#444">📍 ${esc(p.ubicacion)}</div>` : ""}
   </div>`;
 }
 
-export function MapaRefugios({ pins, sel, onSelect }: { pins: Pin[]; sel: string | null; onSelect: (id: string) => void }) {
+export function MapaRefugios({ pins, sel, onSelect, visibleIds }: { pins: Pin[]; sel: string | null; onSelect: (id: string) => void; visibleIds?: string[] | null }) {
   const elRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<Record<string, any>>({});
   const LRef = useRef<any>(null);
+  // onSelect en ref: así el efecto de creación NO depende de él y el mapa no se recrea en cada render.
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
-  // Crea el mapa una vez y coloca los marcadores.
+  // Crea el mapa una vez y coloca todos los marcadores.
   useEffect(() => {
     let cancelado = false;
     (async () => {
@@ -36,7 +39,7 @@ export function MapaRefugios({ pins, sel, onSelect }: { pins: Pin[]; sel: string
       if (cancelado || !elRef.current || mapRef.current) return;
       LRef.current = L;
       const conCoord = pins.filter((p) => p.gps_lat != null && p.gps_lng != null);
-      const map = L.map(elRef.current, { scrollWheelZoom: true }).setView([10.60, -66.97], 12);
+      const map = L.map(elRef.current, { scrollWheelZoom: true }).setView([10.50, -66.90], 11);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap", maxZoom: 19,
       }).addTo(map);
@@ -44,10 +47,9 @@ export function MapaRefugios({ pins, sel, onSelect }: { pins: Pin[]; sel: string
         const m = L.marker([p.gps_lat as number, p.gps_lng as number], {
           icon: L.divIcon({ html: pinHtml(false), className: "", iconSize: [0, 0] }),
         }).addTo(map);
-        // Globito permanente (siempre visible) con tipo + dirección.
         m.bindTooltip(tipHtml(p), { permanent: true, direction: "top", offset: [0, -16], opacity: 1, className: "refugio-tip", interactive: true });
-        m.on("click", () => onSelect(p.id));
-        m.on("tooltipopen", () => m.getTooltip()?.getElement()?.addEventListener("click", () => onSelect(p.id)));
+        m.on("click", () => onSelectRef.current(p.id));
+        m.on("tooltipopen", () => m.getTooltip()?.getElement()?.addEventListener("click", () => onSelectRef.current(p.id)));
         markersRef.current[p.id] = m;
       }
       if (conCoord.length) {
@@ -56,14 +58,30 @@ export function MapaRefugios({ pins, sel, onSelect }: { pins: Pin[]; sel: string
       mapRef.current = map;
     })();
     return () => { cancelado = true; mapRef.current?.remove(); mapRef.current = null; markersRef.current = {}; };
-  }, [pins, onSelect]);
+  }, [pins]);
 
-  // Al seleccionar en la lista: centra, hace zoom y abre el popup del marcador.
+  // Filtro del buscador: muestra solo los marcadores que coinciden y reencuadra.
+  useEffect(() => {
+    const map = mapRef.current, L = LRef.current;
+    if (!map || !L) return;
+    const visibles: any[] = [];
+    for (const [id, m] of Object.entries(markersRef.current)) {
+      const mostrar = !visibleIds || visibleIds.includes(id);
+      const enMapa = map.hasLayer(m);
+      if (mostrar && !enMapa) (m as any).addTo(map);
+      else if (!mostrar && enMapa) map.removeLayer(m);
+      if (mostrar) visibles.push(m);
+    }
+    if (visibleIds && visibles.length) {
+      map.flyToBounds(L.latLngBounds(visibles.map((m) => m.getLatLng())).pad(0.3), { duration: 0.5, maxZoom: 16 });
+    }
+  }, [visibleIds]);
+
+  // Al seleccionar: centra, hace zoom y resalta el marcador + su globito.
   useEffect(() => {
     const m = sel && markersRef.current[sel];
     if (!m || !mapRef.current) return;
     mapRef.current.flyTo(m.getLatLng(), Math.max(mapRef.current.getZoom(), 15), { duration: 0.6 });
-    // Resalta el marcador y su globito activos.
     const L = LRef.current;
     for (const [id, mk] of Object.entries(markersRef.current)) {
       const activo = id === sel;

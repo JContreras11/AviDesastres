@@ -136,6 +136,9 @@
   cursor: pointer;
   border-radius: 0.5rem;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  white-space: normal;        /* romper texto largo (Leaflet usa nowrap por defecto) */
+  max-width: 220px;
+  overflow-wrap: anywhere;
 }
 .leaflet-tooltip.tip-activo {
   border: 2px solid #9b87f5;

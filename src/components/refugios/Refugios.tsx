@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useMemo, useCallback, useTransition } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -24,27 +24,51 @@ const selCls = "border rounded-lg h-10 px-2 text-base bg-background w-full";
 
 const mapQ = (r: Refugio) => encodeURIComponent(`${r.nombre}, ${r.ubicacion ?? ""}, La Guaira, Venezuela`);
 
+// Normaliza para búsqueda flexible: sin acentos, minúsculas. "maiquetia" ≈ "Maiquetía".
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
 export function Refugios({ refugios, needs, gestiona }: { refugios: Refugio[]; needs: Need[]; gestiona: "all" | string[] }) {
   const puede = (id: string) => gestiona === "all" || gestiona.includes(id);
   const [sel, setSel] = useState<string | null>(null);
+  const [q, setQ] = useState("");
 
-  // Al elegir en el mapa, lleva la tarjeta a la vista.
-  function seleccionar(id: string) {
+  // Coincide si TODAS las palabras del buscador aparecen en nombre/dirección (parcial, sin acentos).
+  const filtrados = useMemo(() => {
+    const toks = norm(q).split(/\s+/).filter(Boolean);
+    if (!toks.length) return refugios;
+    return refugios.filter((r) => {
+      const texto = norm(`${r.nombre} ${r.ubicacion ?? ""}`);
+      return toks.every((t) => texto.includes(t));
+    });
+  }, [q, refugios]);
+  const visibleIds = q.trim() ? filtrados.map((r) => r.id) : null;
+
+  // Estable (ref) para no recrear el mapa. Lleva la tarjeta a la vista.
+  const seleccionar = useCallback((id: string) => {
     setSel(id);
     document.getElementById(`refugio-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+  }, []);
 
   return (
     <>
+      <input
+        value={q} onChange={(e) => setQ(e.target.value)}
+        placeholder="🔎 Buscar refugio por nombre, zona, parroquia…"
+        className="w-full h-11 px-3 mb-3 rounded-xl border bg-background text-base"
+      />
       <div className="rounded-2xl overflow-hidden border mb-4 aspect-[16/10] sm:aspect-[2/1]">
-        <MapaRefugios pins={refugios} sel={sel} onSelect={seleccionar} />
+        <MapaRefugios pins={refugios} sel={sel} onSelect={seleccionar} visibleIds={visibleIds} />
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
-        {refugios.map((r) => (
+        {filtrados.map((r) => (
           <Tarjeta key={r.id} r={r} needs={needs.filter((n) => n.hospital_id === r.id)} gestiona={puede(r.id)}
-            selected={sel === r.id} onSelect={() => setSel(r.id)} />
+            selected={sel === r.id} onSelect={() => seleccionar(r.id)} />
         ))}
-        {refugios.length === 0 && <p className="text-sm text-muted-foreground">No hay refugios cargados aún.</p>}
+        {filtrados.length === 0 && (
+          <p className="text-sm text-muted-foreground sm:col-span-2">
+            {refugios.length === 0 ? "No hay refugios cargados aún." : `Sin resultados para “${q}”.`}
+          </p>
+        )}
       </div>
     </>
   );
