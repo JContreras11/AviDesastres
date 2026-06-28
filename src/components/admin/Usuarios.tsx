@@ -18,7 +18,7 @@ const ROLES = [
 const rolLabel = (r: string) => ROLES.find((x) => x.v === r)?.l ?? r;
 
 type Hospital = { id: string; nombre: string };
-type Usuario = { id: string; email: string | null; nombre: string | null; rol: string; hospital_id: string | null; activo: boolean; hospitales?: { nombre: string } | null };
+type Usuario = { id: string; email: string | null; nombre: string | null; telefono?: string | null; rol: string; hospital_id: string | null; activo: boolean; hospitales?: { nombre: string } | null };
 
 const selCls = "border rounded-lg h-10 px-2 text-base bg-background w-full";
 
@@ -44,7 +44,7 @@ export function Usuarios({ inicial, hospitales }: { inicial: Usuario[]; hospital
             className="w-full flex items-center justify-between gap-3 p-3 text-left hover:bg-muted/50 transition">
             <div className="min-w-0">
               <p className="font-medium truncate">{u.nombre || u.email}</p>
-              <p className="text-xs text-muted-foreground truncate">{u.email}{u.hospitales?.nombre ? ` · ${u.hospitales.nombre}` : ""}</p>
+              <p className="text-xs text-muted-foreground truncate">{u.email}{u.telefono ? ` · 📞 ${u.telefono}` : ""}{u.hospitales?.nombre ? ` · ${u.hospitales.nombre}` : ""}</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {!u.activo && <span className="text-xs rounded-full bg-destructive/10 text-destructive px-2 py-0.5">inactivo</span>}
@@ -71,6 +71,7 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
   const nuevo = !u;
   const [email, setEmail] = useState(u?.email ?? "");
   const [nombre, setNombre] = useState(u?.nombre ?? "");
+  const [telefono, setTelefono] = useState(u?.telefono ?? "");
   const [rol, setRol] = useState(u?.rol ?? "voluntario");
   const [hospitalId, setHospitalId] = useState(u?.hospital_id ?? "");
   const [activo, setActivo] = useState(u?.activo ?? true);
@@ -105,8 +106,8 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
   async function guardar() {
     setGuardando(true);
     const r = nuevo
-      ? await crearUsuario({ email, password, nombre, rol, hospital_id: hospitalId })
-      : await actualizarUsuario(u!.id, { nombre, rol, hospital_id: hospitalId, activo });
+      ? await crearUsuario({ email, password, nombre, telefono, rol, hospital_id: hospitalId })
+      : await actualizarUsuario(u!.id, { nombre, telefono, rol, hospital_id: hospitalId, activo });
     setGuardando(false);
     if (!r.ok) { toast.error(r.error); return; }
     toast.success(nuevo ? "Usuario creado." : "Usuario actualizado.");
@@ -140,6 +141,9 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">Nombre
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} className="h-11 text-base" />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium">📞 Teléfono de contacto <span className="text-xs font-normal text-muted-foreground">(solo visible para admins)</span>
+            <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="+58…" className="h-11 text-base" />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">Rol
             <select value={rol} onChange={(e) => setRol(e.target.value)} className={selCls}>

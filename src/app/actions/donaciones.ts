@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient, getScope } from "@/lib/supabase/server";
+import { registrarLog } from "@/app/actions/audit";
 
 // Flujo FASE 3 — Donación responde a una Necesidad (insumo). El trigger de BD
 // recalcula en_camino/recibida/estatus (el "match"); aquí solo validamos permisos.
@@ -26,7 +27,9 @@ export async function crearDonacion(insumoId: string, cantidad: number, centroId
     insumo_id: insumoId, centro_id: centro, donante_user: sc.uid, donante_nombre: nombre,
     cantidad: cant, estado: "en_camino",
   });
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("donar", "insumo", insumoId, { cantidad: cant });
+  return { ok: true };
 }
 
 // Responsable de Centro de Salud confirma que recibió la donación.
@@ -37,7 +40,9 @@ export async function marcarRecibido(donacionId: string) {
   const sc = await getScope();
   if (!sc.admin && !(hospitalId && sc.hospitalIds.includes(hospitalId))) return DENEGADO;
   const { error } = await a.from("donaciones").update({ estado: "recibido" }).eq("id", donacionId);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("recibir", "donacion", donacionId);
+  return { ok: true };
 }
 
 // El donante (o admin) cancela una donación en camino -> el remanente vuelve a Pendiente.
@@ -48,5 +53,7 @@ export async function cancelarDonacion(donacionId: string) {
   const propio = (d as any)?.donante_user === sc.uid || (!!(d as any)?.centro_id && sc.centroIds.includes((d as any).centro_id));
   if (!sc.admin && !propio) return DENEGADO;
   const { error } = await a.from("donaciones").update({ estado: "cancelado" }).eq("id", donacionId);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("cancelar", "donacion", donacionId);
+  return { ok: true };
 }

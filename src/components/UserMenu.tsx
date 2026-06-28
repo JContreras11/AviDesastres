@@ -25,6 +25,7 @@ export function UserMenu() {
       {rol === "admin" && (<>
         <Link href="/admin/instituciones" className="px-2.5 py-1.5 rounded-lg hover:bg-muted" title="Instituciones">🏥</Link>
         <Link href="/admin/usuarios" className="px-2.5 py-1.5 rounded-lg hover:bg-muted" title="Gestión de usuarios">👤</Link>
+        <Link href="/admin/log" className="px-2.5 py-1.5 rounded-lg hover:bg-muted" title="Bitácora">📋</Link>
       </>)}
       <span className="hidden sm:flex flex-col text-right leading-tight">
         <span className="text-xs font-medium">{nombre ?? email}</span>

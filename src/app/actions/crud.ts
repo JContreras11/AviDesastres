@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient, getScope } from "@/lib/supabase/server";
+import { registrarLog } from "@/app/actions/audit";
 
 // ── Alcance (seguridad) ──
 // service_role salta RLS, así que cada mutación verifica el alcance del usuario:
@@ -43,7 +44,9 @@ export async function actualizarPersona(id: string, campos: Record<string, any>)
   const limpio: Record<string, any> = {};
   for (const k of CAMPOS_PERSONA) if (k in campos) limpio[k] = campos[k];
   const { data, error } = await s.from("personas").update(limpio).eq("id", id).select().single();
-  return error ? { ok: false, error: error.message } : { ok: true, persona: data };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("editar", "persona", id, { nombre: data?.nombre });
+  return { ok: true, persona: data };
 }
 
 export async function eliminarPersona(id: string) {
@@ -51,7 +54,9 @@ export async function eliminarPersona(id: string) {
   const { data: p } = await s.from("personas").select("hospital_id").eq("id", id).single();
   if (!(await gestionaHospital(p?.hospital_id))) return DENEGADO;
   const { error } = await s.from("personas").delete().eq("id", id);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("eliminar", "persona", id);
+  return { ok: true };
 }
 
 // ── Insumos ──
@@ -77,7 +82,9 @@ export async function actualizarInsumo(id: string, campos: Record<string, any>) 
   for (const k of ["nombre", "cantidad", "unidad", "presentacion", "area", "para_que_sirve", "alternativas", "prioridad", "estado", "donante"])
     if (k in campos) limpio[k] = campos[k];
   const { data, error } = await s.from("insumos").update(limpio).eq("id", id).select().single();
-  return error ? { ok: false, error: error.message } : { ok: true, insumo: data };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("editar", "insumo", id, { nombre: data?.nombre });
+  return { ok: true, insumo: data };
 }
 
 // "Cubierto": el hospital/área verifica que recibió el insumo -> sale de la lista activa.
@@ -89,6 +96,7 @@ export async function cubrirInsumo(id: string, por?: string, nota?: string) {
     .eq("id", id).select().single();
   if (error) return { ok: false, error: error.message };
   await s.from("insumo_eventos").insert({ insumo_id: id, estado: "cubierto", actor: por, nota: nota ?? "Recibido/verificado" });
+  await registrarLog("cubrir", "insumo", id);
   return { ok: true, insumo: data };
 }
 
@@ -96,7 +104,9 @@ export async function eliminarInsumo(id: string) {
   const s = createAdminClient();
   if (!(await gestionaHospital(await hospitalDeInsumo(s, id)))) return DENEGADO;
   const { error } = await s.from("insumos").delete().eq("id", id);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("eliminar", "insumo", id);
+  return { ok: true };
 }
 
 // Cambia estado del insumo (solicitado -> en_transito -> entregado) + registra evento de tracking.
@@ -109,6 +119,7 @@ export async function cambiarEstadoInsumo(id: string, estado: string, actor?: st
     .eq("id", id).select().single();
   if (error) return { ok: false, error: error.message };
   await s.from("insumo_eventos").insert({ insumo_id: id, estado, actor, nota });
+  await registrarLog("tracking", "insumo", id, { estado });
   return { ok: true, insumo: data };
 }
 
@@ -132,7 +143,9 @@ export async function crearHospital(campos: Record<string, any>) {
   for (const k of CAMPOS_HOSPITAL) if (k in campos) limpio[k] = campos[k];
   if (!limpio.nombre?.trim()) return { ok: false, error: "El nombre es obligatorio." };
   const { data, error } = await s.from("hospitales").insert(limpio).select().single();
-  return error ? { ok: false, error: error.message } : { ok: true, hospital: data };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("crear", "hospital", data?.id, { nombre: data?.nombre });
+  return { ok: true, hospital: data };
 }
 
 export async function actualizarHospital(id: string, campos: Record<string, any>) {
@@ -141,14 +154,18 @@ export async function actualizarHospital(id: string, campos: Record<string, any>
   const limpio: Record<string, any> = {};
   for (const k of CAMPOS_HOSPITAL) if (k in campos) limpio[k] = campos[k];
   const { data, error } = await s.from("hospitales").update(limpio).eq("id", id).select().single();
-  return error ? { ok: false, error: error.message } : { ok: true, hospital: data };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("editar", "hospital", id, { nombre: data?.nombre });
+  return { ok: true, hospital: data };
 }
 
 export async function eliminarHospital(id: string) {
   if (!(await esAdmin())) return DENEGADO; // borra insumos/personas en cascada: solo admin
   const s = createAdminClient();
   const { error } = await s.from("hospitales").delete().eq("id", id);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("eliminar", "hospital", id);
+  return { ok: true };
 }
 
 // ── Centros de Acopio ──
@@ -165,12 +182,16 @@ export async function upsertCentro(campos: Record<string, any>) {
     ? s.from("centros_acopio").update(limpio).eq("id", campos.id)
     : s.from("centros_acopio").insert(limpio);
   const { data, error } = await q.select().single();
-  return error ? { ok: false, error: error.message } : { ok: true, centro: data };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog(campos.id ? "editar" : "crear", "centro", data?.id, { nombre: data?.nombre });
+  return { ok: true, centro: data };
 }
 
 export async function eliminarCentro(id: string) {
   if (!(await esAdmin())) return DENEGADO; // borrar institución: solo admin
   const s = createAdminClient();
   const { error } = await s.from("centros_acopio").delete().eq("id", id);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("eliminar", "centro", id);
+  return { ok: true };
 }

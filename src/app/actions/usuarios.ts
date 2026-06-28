@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { registrarLog } from "@/app/actions/audit";
 
 // CRUD de usuarios — SOLO admin. service_role salta RLS, así que cada acción
 // reverifica que quien llama es admin (frontera de seguridad, no confiar en la UI).
@@ -21,7 +22,7 @@ export async function listarUsuarios() {
   // Todos los usuarios de auth, aunque les falte perfil (creados por SQL antes del trigger).
   const [{ data: authList }, { data: perfiles }] = await Promise.all([
     a.auth.admin.listUsers({ perPage: 1000 }),
-    a.from("profiles").select("id,email,nombre,rol,hospital_id,activo,hospitales(nombre)"),
+    a.from("profiles").select("id,email,nombre,telefono,rol,hospital_id,activo,hospitales(nombre)"),
   ]);
   const byId = new Map((perfiles ?? []).map((p: any) => [p.id, p]));
   return (authList?.users ?? []).map((u: any) => {
@@ -30,6 +31,7 @@ export async function listarUsuarios() {
       id: u.id,
       email: p.email ?? u.email ?? null,
       nombre: p.nombre ?? null,
+      telefono: p.telefono ?? null,
       rol: p.rol ?? "publico",
       hospital_id: p.hospital_id ?? null,
       activo: p.activo ?? true,
@@ -71,12 +73,14 @@ export async function setMembresias(userId: string, hospitales: Memb[], centros:
     ...hospitales.map((h) => ({ user_id: userId, hospital_id: h.id, rol_local: rl(h.rol_local) })),
     ...centros.map((c) => ({ user_id: userId, centro_id: c.id, rol_local: rl(c.rol_local) })),
   ];
-  if (filas.length === 0) return { ok: true };
+  if (filas.length === 0) { await registrarLog("editar", "usuario", userId, { membresias: 0 }); return { ok: true }; }
   const { error } = await a.from("membresias").insert(filas);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("editar", "usuario", userId, { membresias: filas.length });
+  return { ok: true };
 }
 
-export async function crearUsuario(campos: { email: string; password: string; nombre?: string; rol?: string; hospital_id?: string | null }) {
+export async function crearUsuario(campos: { email: string; password: string; nombre?: string; telefono?: string; rol?: string; hospital_id?: string | null }) {
   const { a } = await exigirAdmin();
   const email = campos.email?.trim().toLowerCase();
   if (!email) return { ok: false, error: "El correo es obligatorio." };
@@ -84,36 +88,45 @@ export async function crearUsuario(campos: { email: string; password: string; no
   const rol = ROLES.includes(campos.rol ?? "") ? campos.rol : "voluntario";
   const { data, error } = await a.auth.admin.createUser({ email, password: campos.password, email_confirm: true });
   if (error) return { ok: false, error: error.message };
-  // El trigger crea el perfil; le ponemos nombre/rol/hospital.
+  // El trigger crea el perfil; le ponemos nombre/teléfono/rol/hospital.
   const { error: e2 } = await a.from("profiles")
-    .update({ nombre: campos.nombre ?? null, rol, hospital_id: campos.hospital_id || null, activo: true })
+    .update({ nombre: campos.nombre ?? null, telefono: campos.telefono ?? null, rol, hospital_id: campos.hospital_id || null, activo: true })
     .eq("id", data.user.id);
-  return e2 ? { ok: false, error: e2.message } : { ok: true };
+  if (e2) return { ok: false, error: e2.message };
+  await registrarLog("crear", "usuario", data.user.id, { email, rol });
+  return { ok: true };
 }
 
-export async function actualizarUsuario(id: string, campos: { nombre?: string; rol?: string; hospital_id?: string | null; activo?: boolean }) {
+export async function actualizarUsuario(id: string, campos: { nombre?: string; telefono?: string; rol?: string; hospital_id?: string | null; activo?: boolean }) {
   const { uid, a } = await exigirAdmin();
   if (id === uid && (campos.rol && campos.rol !== "admin" || campos.activo === false))
     return { ok: false, error: "No puedes quitarte a ti mismo el acceso de admin." };
   const limpio: Record<string, any> = {};
   if ("nombre" in campos) limpio.nombre = campos.nombre ?? null;
+  if ("telefono" in campos) limpio.telefono = campos.telefono ?? null;
   if (campos.rol && ROLES.includes(campos.rol)) limpio.rol = campos.rol;
   if ("hospital_id" in campos) limpio.hospital_id = campos.hospital_id || null;
   if ("activo" in campos) limpio.activo = campos.activo;
   const { error } = await a.from("profiles").update(limpio).eq("id", id);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("editar", "usuario", id, limpio);
+  return { ok: true };
 }
 
 export async function cambiarPasswordUsuario(id: string, password: string) {
   const { a } = await exigirAdmin();
   if (!password || password.length < 6) return { ok: false, error: "La contraseña debe tener al menos 6 caracteres." };
   const { error } = await a.auth.admin.updateUserById(id, { password });
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("password", "usuario", id);
+  return { ok: true };
 }
 
 export async function eliminarUsuario(id: string) {
   const { uid, a } = await exigirAdmin();
   if (id === uid) return { ok: false, error: "No puedes eliminar tu propia cuenta." };
   const { error } = await a.auth.admin.deleteUser(id); // FK on delete cascade borra el perfil
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("eliminar", "usuario", id);
+  return { ok: true };
 }
