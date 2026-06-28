@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { procesarImagen } from "@/lib/ai/image";
 import { analizarDocumento, analizarTexto, transcribirAudio, type DocumentoAnalizado } from "@/lib/ai/vision";
 import { indexar, textoPersona, textoInsumo } from "@/lib/ai/indexar";
+import { mismaPersona, tokensNombre, camposFaltantes } from "@/lib/match-persona";
 import type { ExifMeta } from "@/lib/exif";
 
 export type ProcesarResult =
@@ -28,9 +29,6 @@ function normCedula(c: string | null): string | null {
   if (!c) return null;
   const n = c.replace(/[^0-9a-zA-Z]/g, "").toUpperCase();
   return n || null;
-}
-function normNombre(n: string | null): string {
-  return (n ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 const EXIF_VACIO: ExifMeta = { gps_lat: null, gps_lng: null, foto_fecha: null };
@@ -209,18 +207,27 @@ async function guardar(
       fotos: fotoPath ? [fotoPath] : [],
     };
 
-    // Match por cédula; si no hay, intenta por nombre + edad (evita duplicar la misma lista/foto).
+    // Match: cédula manda; si falta, candidatos por tokens del nombre y decide por
+    // nombre compatible + atributos (mismaPersona). "Juan Perez" puede ser "Juan A. Perez Oropeza".
     let existente: any = null;
     if (cedula) existente = (await supabase.from("personas").select("*").eq("cedula", cedula).maybeSingle()).data;
     if (!existente) {
-      let q = supabase.from("personas").select("*").ilike("nombre", normNombre(p.nombre)).limit(1);
-      q = p.edad != null ? q.eq("edad", p.edad) : q;
-      existente = (await q).data?.[0] ?? null;
+      const toks = tokensNombre(p.nombre);
+      if (toks.length) {
+        const orFiltro = toks.slice(0, 4).map((t) => `nombre.ilike.%${t}%`).join(",");
+        const { data: cands } = await supabase.from("personas").select("*").or(orFiltro).limit(25);
+        const ref = { nombre: p.nombre, cedula, edad: p.edad ?? null, sexo: p.sexo ?? null, ubicacion: p.ubicacion ?? null, hospital_id: hospitalId };
+        existente = (cands ?? []).find((c: any) => mismaPersona(ref, c)) ?? null;
+      }
     }
 
     if (existente) {
       actualizadas++;
-      if (existente.estado_salud !== base.estado_salud) {
+      // Rellena SOLO lo que falte: una lista nueva con menos info no borra datos buenos.
+      const parche: any = camposFaltantes(existente, base);
+      // Estado de salud: refresca si el nuevo aporta algo más preciso que lo conocido (+ historial).
+      if (base.estado_salud && base.estado_salud !== "desconocido" && base.estado_salud !== existente.estado_salud) {
+        parche.estado_salud = base.estado_salud;
         await supabase.from("persona_historial").insert({
           persona_id: existente.id,
           estado_salud: existente.estado_salud,
@@ -231,8 +238,10 @@ async function guardar(
         });
       }
       const fotos = [...new Set([...(existente.fotos ?? []), ...(fotoPath ? [fotoPath] : [])])].slice(0, 3);
-      const { data } = await supabase
-        .from("personas").update({ ...base, fotos }).eq("id", existente.id).select().single();
+      if (fotos.length !== (existente.fotos?.length ?? 0)) parche.fotos = fotos;
+      const { data } = Object.keys(parche).length
+        ? await supabase.from("personas").update(parche).eq("id", existente.id).select().single()
+        : { data: existente };
       personasGuardadas.push(data);
     } else {
       creadas++;
