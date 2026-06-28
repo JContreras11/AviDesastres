@@ -56,7 +56,8 @@ function DialogContent({
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "relative z-10 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 shadow-xl outline-none sm:max-w-sm",
+          // [&>*]:min-w-0 evita que contenido ancho (selects con opciones largas, listas) estire el diálogo y desborde en móvil.
+          "relative z-10 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 shadow-xl outline-none [&>*]:min-w-0 sm:max-w-sm",
           className
         )}
         {...props}

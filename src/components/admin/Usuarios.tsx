@@ -20,7 +20,7 @@ const rolLabel = (r: string) => ROLES.find((x) => x.v === r)?.l ?? r;
 type Hospital = { id: string; nombre: string };
 type Usuario = { id: string; email: string | null; nombre: string | null; telefono?: string | null; rol: string; hospital_id: string | null; activo: boolean; hospitales?: { nombre: string } | null };
 
-const selCls = "border rounded-lg h-10 px-2 text-base bg-background w-full";
+const selCls = "border rounded-lg h-10 px-2 text-base bg-background w-full min-w-0";
 
 export function Usuarios({ inicial, hospitales }: { inicial: Usuario[]; hospitales: Hospital[] }) {
   const [usuarios, setUsuarios] = useState(inicial);
@@ -134,7 +134,7 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>{nuevo ? "Nuevo usuario" : "Editar usuario"}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 min-w-0">
           <label className="flex flex-col gap-1 text-sm font-medium">Correo
             <Input type="email" value={email} disabled={!nuevo} onChange={(e) => setEmail(e.target.value)}
               placeholder="persona@correo.com" className="h-11 text-base" />
@@ -169,7 +169,7 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
                 Cuenta activa (puede entrar)
               </label>
               <div className="flex items-end gap-2">
-                <label className="flex flex-col gap-1 text-sm font-medium flex-1">Nueva contraseña
+                <label className="flex flex-col gap-1 text-sm font-medium flex-1 min-w-0">Nueva contraseña
                   <Input type="text" value={password} onChange={(e) => setPassword(e.target.value)}
                     placeholder="dejar vacío para no cambiar" className="h-11 text-base" />
                 </label>
