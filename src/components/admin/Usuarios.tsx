@@ -77,20 +77,27 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
   const [password, setPassword] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  // Membresías (M:M con hospitales/centros). Solo al editar un usuario existente.
+  // Membresías (M:M con hospitales/centros) + rol_local. Solo al editar un usuario existente.
   const [inst, setInst] = useState<{ hospitales: { id: string; nombre: string; tipo?: string }[]; centros: { id: string; nombre: string }[] }>({ hospitales: [], centros: [] });
-  const [selH, setSelH] = useState<Set<string>>(new Set());
-  const [selC, setSelC] = useState<Set<string>>(new Set());
+  const [selH, setSelH] = useState<Map<string, string>>(new Map());
+  const [selC, setSelC] = useState<Map<string, string>>(new Map());
   useEffect(() => {
     if (nuevo) return;
     listarInstituciones().then(setInst);
-    getMembresias(u!.id).then((m) => { setSelH(new Set(m.hospitalIds)); setSelC(new Set(m.centroIds)); });
+    getMembresias(u!.id).then((m) => {
+      setSelH(new Map(m.hospitalIds.map((id) => [id, m.roles[id] ?? "responsable"])));
+      setSelC(new Map(m.centroIds.map((id) => [id, m.roles[id] ?? "responsable"])));
+    });
   }, [nuevo, u]);
-  const toggle = (set: Set<string>, fn: (s: Set<string>) => void, id: string) => {
-    const n = new Set(set); n.has(id) ? n.delete(id) : n.add(id); fn(n);
+  const toggle = (map: Map<string, string>, fn: (m: Map<string, string>) => void, id: string) => {
+    const n = new Map(map); n.has(id) ? n.delete(id) : n.set(id, "responsable"); fn(n);
+  };
+  const cambiarRolLocal = (map: Map<string, string>, fn: (m: Map<string, string>) => void, id: string, rl: string) => {
+    const n = new Map(map); n.set(id, rl); fn(n);
   };
   async function guardarMembresias() {
-    const r = await setMembresias(u!.id, [...selH], [...selC]);
+    const toArr = (m: Map<string, string>) => [...m].map(([id, rol_local]) => ({ id, rol_local }));
+    const r = await setMembresias(u!.id, toArr(selH), toArr(selC));
     if (!r.ok) { toast.error((r as any).error); return; }
     toast.success("Instituciones actualizadas.");
   }
@@ -170,16 +177,32 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
                 <p className="text-xs text-muted-foreground mb-2">El usuario verá/gestionará (como admin) solo lo de estas instituciones. Admin global no necesita esto.</p>
                 <div className="max-h-44 overflow-auto rounded-lg border divide-y">
                   {inst.hospitales.map((h) => (
-                    <label key={h.id} className="flex items-center gap-2 p-2 text-sm">
-                      <input type="checkbox" className="size-4" checked={selH.has(h.id)} onChange={() => toggle(selH, setSelH, h.id)} />
-                      🏥 {h.nombre} <span className="text-xs text-muted-foreground">{h.tipo === "clinica" ? "clínica" : ""}</span>
-                    </label>
+                    <div key={h.id} className="flex items-center gap-2 p-2 text-sm">
+                      <label className="flex items-center gap-2 flex-1 min-w-0">
+                        <input type="checkbox" className="size-4" checked={selH.has(h.id)} onChange={() => toggle(selH, setSelH, h.id)} />
+                        <span className="truncate">🏥 {h.nombre}{h.tipo === "clinica" ? " (clínica)" : ""}</span>
+                      </label>
+                      {selH.has(h.id) && (
+                        <select value={selH.get(h.id)} onChange={(e) => cambiarRolLocal(selH, setSelH, h.id, e.target.value)} className="border rounded h-8 text-xs bg-background">
+                          <option value="responsable">Responsable</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      )}
+                    </div>
                   ))}
                   {inst.centros.map((c) => (
-                    <label key={c.id} className="flex items-center gap-2 p-2 text-sm">
-                      <input type="checkbox" className="size-4" checked={selC.has(c.id)} onChange={() => toggle(selC, setSelC, c.id)} />
-                      📦 {c.nombre}
-                    </label>
+                    <div key={c.id} className="flex items-center gap-2 p-2 text-sm">
+                      <label className="flex items-center gap-2 flex-1 min-w-0">
+                        <input type="checkbox" className="size-4" checked={selC.has(c.id)} onChange={() => toggle(selC, setSelC, c.id)} />
+                        <span className="truncate">📦 {c.nombre}</span>
+                      </label>
+                      {selC.has(c.id) && (
+                        <select value={selC.get(c.id)} onChange={(e) => cambiarRolLocal(selC, setSelC, c.id, e.target.value)} className="border rounded h-8 text-xs bg-background">
+                          <option value="responsable">Responsable</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      )}
+                    </div>
                   ))}
                 </div>
                 <Button type="button" variant="outline" size="sm" className="mt-2" onClick={guardarMembresias}>Guardar instituciones</Button>

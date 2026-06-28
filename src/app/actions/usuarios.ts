@@ -51,20 +51,25 @@ export async function listarInstituciones() {
 
 export async function getMembresias(userId: string) {
   const { a } = await exigirAdmin();
-  const { data } = await a.from("membresias").select("hospital_id,centro_id").eq("user_id", userId);
+  const { data } = await a.from("membresias").select("hospital_id,centro_id,rol_local").eq("user_id", userId);
+  const roles: Record<string, string> = {};
+  for (const m of data ?? []) { const id = m.hospital_id ?? m.centro_id; if (id) roles[id] = m.rol_local ?? "responsable"; }
   return {
     hospitalIds: (data ?? []).map((m: any) => m.hospital_id).filter(Boolean) as string[],
     centroIds: (data ?? []).map((m: any) => m.centro_id).filter(Boolean) as string[],
+    roles,
   };
 }
 
-export async function setMembresias(userId: string, hospitalIds: string[], centroIds: string[]) {
+type Memb = { id: string; rol_local?: string };
+export async function setMembresias(userId: string, hospitales: Memb[], centros: Memb[]) {
   const { a } = await exigirAdmin();
   // Reemplazo total: borra y reinserta (pocas filas por usuario).
   await a.from("membresias").delete().eq("user_id", userId);
+  const rl = (r?: string) => (r === "admin" ? "admin" : "responsable");
   const filas = [
-    ...hospitalIds.map((id) => ({ user_id: userId, hospital_id: id })),
-    ...centroIds.map((id) => ({ user_id: userId, centro_id: id })),
+    ...hospitales.map((h) => ({ user_id: userId, hospital_id: h.id, rol_local: rl(h.rol_local) })),
+    ...centros.map((c) => ({ user_id: userId, centro_id: c.id, rol_local: rl(c.rol_local) })),
   ];
   if (filas.length === 0) return { ok: true };
   const { error } = await a.from("membresias").insert(filas);

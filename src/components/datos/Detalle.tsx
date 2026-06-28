@@ -14,6 +14,7 @@ import {
   actualizarInsumo, eliminarInsumo, cambiarEstadoInsumo, cubrirInsumo, getInsumo,
   getHospital, actualizarHospital, eliminarHospital, upsertCentro, eliminarCentro,
 } from "@/app/actions/crud";
+import { crearDonacion, marcarRecibido, cancelarDonacion } from "@/app/actions/donaciones";
 
 const PRESENTACIONES = ["", "frasco", "tableta", "comprimido", "vial", "ampolla", "polvo", "jarabe", "solución", "otro"];
 
@@ -112,15 +113,38 @@ export function PersonaDialog({ id, onClose, onChanged }: { id: string; onClose:
 }
 
 export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
-  const { puede, gestiona } = useRol();
+  const { puede, gestiona, donante } = useRol();
   const [i, setI] = useState<any>(null);
   const [eventos, setEventos] = useState<any[]>([]);
+  const [donaciones, setDonaciones] = useState<any[]>([]);
+  const [montoDon, setMontoDon] = useState("");
   // Solo gestiona (admin o miembro del hospital) puede editar/tracking/cubrir.
   const gestion = gestiona(i?.hospital_id);
   const editable = puede("editar") && gestion, tracking = puede("tracking") && gestion, cubrir = puede("cubrir") && gestion;
 
-  const cargar = () => getInsumo(id).then((r) => { setI(r.insumo); setEventos(r.eventos); });
+  const cargar = () => getInsumo(id).then((r) => { setI(r.insumo); setEventos(r.eventos); setDonaciones(r.donaciones ?? []); });
   useEffect(() => { cargar(); }, [id]);
+
+  // Conciliación (match): pendiente = solicitada − en camino − recibida.
+  const solicitada = Number(i?.cantidad ?? 0);
+  const enCamino = Number(i?.cantidad_en_camino ?? 0);
+  const recibida = Number(i?.cantidad_recibida ?? 0);
+  const pendiente = Math.max(0, solicitada - enCamino - recibida);
+
+  async function registrarDonacion() {
+    const cant = Math.floor(Number(montoDon || pendiente));
+    if (!cant || cant <= 0) { toast.error("Indica una cantidad válida."); return; }
+    const r = await crearDonacion(id, cant);
+    if (r.ok) { toast.success("Donación registrada (en camino)"); setMontoDon(""); cargar(); onChanged(); } else toast.error((r as any).error);
+  }
+  async function recibir(donId: string) {
+    const r = await marcarRecibido(donId);
+    if (r.ok) { toast.success("Marcado como recibido"); cargar(); onChanged(); } else toast.error((r as any).error);
+  }
+  async function cancelar(donId: string) {
+    const r = await cancelarDonacion(donId);
+    if (r.ok) { toast.success("Donación cancelada"); cargar(); onChanged(); } else toast.error((r as any).error);
+  }
 
   async function cambiarEstado(estado: string) {
     const r = await cambiarEstadoInsumo(id, estado);
@@ -186,6 +210,51 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
             <p className="text-xs text-muted-foreground" title={fechaHora(i.created_at)}>
               🕑 Solicitado {hace(i.created_at)}{i.estado === "cubierto" && i.cubierto_at ? ` · cubierto ${hace(i.cubierto_at)}` : ""}
             </p>
+
+            {/* Conciliación Necesidad ↔ Donación (visible a todos). */}
+            {solicitada > 0 && (
+              <div className="rounded-xl border p-3 text-sm">
+                <p className="font-semibold mb-1">Conciliación</p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div><div className="text-lg font-bold text-amber-600">{pendiente}</div><div className="text-xs text-muted-foreground">Pendiente</div></div>
+                  <div><div className="text-lg font-bold text-blue-600">{enCamino}</div><div className="text-xs text-muted-foreground">En camino</div></div>
+                  <div><div className="text-lg font-bold text-green-600">{recibida}</div><div className="text-xs text-muted-foreground">Recibido</div></div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 text-center">Solicitado: {solicitada}</p>
+              </div>
+            )}
+
+            {/* Donante institucional (centro/ONG) registra envío -> pasa a "En camino". */}
+            {donante && pendiente > 0 && (
+              <div className="flex items-end gap-2">
+                <Campo label="🎁 Donar (en camino)">
+                  <Input inputMode="numeric" value={montoDon} placeholder={String(pendiente)}
+                    onChange={(e) => setMontoDon(e.target.value)} className={inputCls} />
+                </Campo>
+                <Button size="lg" onClick={registrarDonacion}>Registrar</Button>
+              </div>
+            )}
+
+            {/* Listado de donaciones de esta necesidad. */}
+            {donaciones.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium">Donaciones</p>
+                {donaciones.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-2 text-sm border-b py-1">
+                    <span>
+                      {d.cantidad} · <span className="capitalize">{String(d.estado).replace("_", " ")}</span>
+                      {d.centros_acopio?.nombre ? ` · ${d.centros_acopio.nombre}` : d.donante_nombre ? ` · ${d.donante_nombre}` : ""}
+                    </span>
+                    {d.estado === "en_camino" && (
+                      <span className="flex gap-1 shrink-0">
+                        {gestion && <Button size="sm" variant="outline" onClick={() => recibir(d.id)}>Recibí</Button>}
+                        {(donante || gestion) && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => cancelar(d.id)}>✕</Button>}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {tracking && (<>
               <Separator /><p className="text-sm font-semibold">Tracking</p>

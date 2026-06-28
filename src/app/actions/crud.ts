@@ -57,11 +57,12 @@ export async function eliminarPersona(id: string) {
 // ── Insumos ──
 export async function getInsumo(id: string) {
   const s = createAdminClient();
-  const [{ data: insumo }, { data: eventos }] = await Promise.all([
+  const [{ data: insumo }, { data: eventos }, { data: donaciones }] = await Promise.all([
     s.from("insumos").select("*, hospitales(nombre, ubicacion, gps_lat, gps_lng)").eq("id", id).single(),
     s.from("insumo_eventos").select("*").eq("insumo_id", id).order("created_at", { ascending: false }),
+    s.from("donaciones").select("*, centros_acopio(nombre)").eq("insumo_id", id).order("created_at", { ascending: false }),
   ]);
-  return { insumo, eventos: eventos ?? [] };
+  return { insumo, eventos: eventos ?? [], donaciones: donaciones ?? [] };
 }
 
 async function hospitalDeInsumo(s: any, id: string) {

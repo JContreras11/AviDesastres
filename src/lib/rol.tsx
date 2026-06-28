@@ -23,9 +23,10 @@ type CtxV = {
   puede: (a: string) => boolean;
   // ¿Gestiona esta institución? admin=siempre; resto=solo si es miembro. (Escritura real se valida en el servidor.)
   gestiona: (hospitalId?: string | null, centroId?: string | null) => boolean;
+  donante: boolean; // miembro de algún centro/ONG (o admin): puede registrar donaciones
 };
 const Ctx = createContext<CtxV>({
-  rol: "publico", email: null, nombre: null, puede: () => false, gestiona: () => false,
+  rol: "publico", email: null, nombre: null, puede: () => false, gestiona: () => false, donante: false,
 });
 
 export function RolProvider({ sesion, children }: { sesion: Sesion; children: React.ReactNode }) {
@@ -35,7 +36,8 @@ export function RolProvider({ sesion, children }: { sesion: Sesion; children: Re
   const puede = (a: string) => PERMISOS[rol].has(a);
   const gestiona = (hospitalId?: string | null, centroId?: string | null) =>
     rol === "admin" || (!!hospitalId && hospitalIds.includes(hospitalId)) || (!!centroId && centroIds.includes(centroId));
-  return <Ctx.Provider value={{ rol, email: sesion.email, nombre: sesion.nombre, puede, gestiona }}>{children}</Ctx.Provider>;
+  const donante = rol === "admin" || centroIds.length > 0;
+  return <Ctx.Provider value={{ rol, email: sesion.email, nombre: sesion.nombre, puede, gestiona, donante }}>{children}</Ctx.Provider>;
 }
 
 export const useRol = () => useContext(Ctx);
