@@ -45,7 +45,7 @@ async function excelATexto(buf: Buffer, nombre: string): Promise<string> {
 }
 
 // Quita etiquetas HTML dejando el texto (suficiente para que la IA estructure tablas).
-export function htmlATexto(html: string): string {
+function htmlATexto(html: string): string {
   return html
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/(tr|p|div|li|h\d)>/gi, "\n")
