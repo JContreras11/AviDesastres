@@ -12,8 +12,8 @@ export function ImpersonationBanner({ nombre, rol }: { nombre: string | null; ro
   async function salir() {
     setSaliendo(true);
     await dejarDeImpersonar();
-    // Recarga dura: limpia toda la sesión efectiva (cookie) de una vez.
-    window.location.href = "/";
+    // Recarga dura de vuelta a la lista de usuarios, listo para impersonar a otro.
+    window.location.href = "/admin/usuarios";
   }
 
   return (

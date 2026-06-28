@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { crearUsuario, actualizarUsuario, cambiarPasswordUsuario, eliminarUsuario, listarUsuarios,
   listarInstituciones, getMembresias, setMembresias } from "@/app/actions/usuarios";
+import { impersonar } from "@/app/actions/impersonar";
 
 const ROLES = [
   { v: "admin", l: "🛡️ Admin" },
@@ -122,6 +123,12 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
     toast.success("Contraseña cambiada.");
   }
 
+  async function verComo() {
+    const r = await impersonar(u!.id);
+    if (!r.ok) { toast.error((r as any).error); return; }
+    window.location.href = "/"; // recarga dura -> entra a la vista del usuario
+  }
+
   async function borrar() {
     if (!confirm(`¿Eliminar a ${u!.nombre || u!.email}? No se puede deshacer.`)) return;
     const r = await eliminarUsuario(u!.id);
@@ -212,6 +219,9 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
                 <Button type="button" variant="outline" size="sm" className="mt-2" onClick={guardarMembresias}>Guardar instituciones</Button>
               </div>
             </>
+          )}
+          {!nuevo && u && u.rol !== "admin" && (
+            <Button type="button" variant="secondary" className="w-full" onClick={verComo}>👁️ Ver como este usuario</Button>
           )}
         </div>
         <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between gap-2">
