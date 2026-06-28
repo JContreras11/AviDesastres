@@ -15,6 +15,9 @@ import { listarPersonas, listarInsumos, listarHospitales, listarCentros } from "
 
 const TABS = ["personas", "insumos", "hospitales", "acopio"];
 
+// DEBUG: pon en true para APAGAR todas las peticiones de datos (aislar el freeze).
+const DEBUG_SIN_PETICIONES = true;
+
 const PILL: Record<string, string> = {
   herido: "bg-amber-100 text-amber-800", desaparecido: "bg-red-100 text-red-700",
   detenido: "bg-purple-100 text-purple-700", fallecido: "bg-gray-200 text-gray-700",
@@ -41,10 +44,11 @@ export function Datos({ counts }: { counts: Counts }) {
   }, []);
 
   // Cada tab pide solo su data (cacheada). Mutaciones -> invalidar (refresh por evento).
-  const personasQ = useQuery({ queryKey: ["personas"], queryFn: listarPersonas, enabled: tab === "personas" });
-  const insumosQ = useQuery({ queryKey: ["insumos"], queryFn: listarInsumos, enabled: tab === "insumos" });
-  const hospitalesQ = useQuery({ queryKey: ["hospitales"], queryFn: listarHospitales, enabled: tab === "hospitales" });
-  const centrosQ = useQuery({ queryKey: ["centros"], queryFn: listarCentros, enabled: tab === "acopio" });
+  const on = (t: string) => !DEBUG_SIN_PETICIONES && tab === t;
+  const personasQ = useQuery({ queryKey: ["personas"], queryFn: listarPersonas, enabled: on("personas") });
+  const insumosQ = useQuery({ queryKey: ["insumos"], queryFn: listarInsumos, enabled: on("insumos") });
+  const hospitalesQ = useQuery({ queryKey: ["hospitales"], queryFn: listarHospitales, enabled: on("hospitales") });
+  const centrosQ = useQuery({ queryKey: ["centros"], queryFn: listarCentros, enabled: on("acopio") });
   const personas = personasQ.data ?? [], insumos = insumosQ.data ?? [], hospitales = hospitalesQ.data ?? [], centros = centrosQ.data ?? [];
 
   const [sel, setSel] = useState<{ tipo: string; data: any } | null>(null);
