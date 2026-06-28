@@ -17,3 +17,20 @@ self.addEventListener("activate", (e) => {
     })(),
   );
 });
+
+// ── FASE 4 (futuro): Web Push para notificaciones logísticas ───────────────
+// Hoy el SW es kill-switch (no se registra). Cuando se reactive el registro,
+// estos handlers ya entregan la alerta al teléfono aunque la app esté cerrada.
+// Backend pendiente: guardar la PushSubscription del médico y enviar con VAPID.
+//
+// self.addEventListener("push", (e) => {
+//   const data = e.data ? e.data.json() : {};
+//   e.waitUntil(self.registration.showNotification(data.titulo || "AviHelp", {
+//     body: data.mensaje || "Tienes una nueva notificación.",
+//     icon: "/icon-192.png", badge: "/icon-192.png", data: { url: data.url || "/" },
+//   }));
+// });
+// self.addEventListener("notificationclick", (e) => {
+//   e.notification.close();
+//   e.waitUntil(self.clients.openWindow(e.notification.data?.url || "/"));
+// });
