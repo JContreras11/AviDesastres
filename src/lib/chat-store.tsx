@@ -2,10 +2,49 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { preguntar, transcribirVoz } from "@/app/actions/chat";
+import { useRol } from "@/lib/rol";
 
 export type Msg = { rol: "user" | "bot"; texto: string };
-const SALUDO: Msg = { rol: "bot", texto: "¡Hola! Soy Avi 💜 Pregúntame por una persona o un insumo. Ej: «¿Tienen info de Juan Pérez visto en Petare?»" };
 const KEY = "avihelp-chat";
+
+// Tips útiles por rol: enseñan a usar a Avi. Se eligen al azar (saludo + nudge inactivo).
+const TIPS: Record<string, string[]> = {
+  publico: [
+    "Puedes preguntarme «¿qué insumos faltan?» y te muestro las necesidades de los hospitales.",
+    "¿Buscas a alguien? Escríbeme su nombre y reviso hospitales y registros públicos.",
+    "Si quieres ayudar, pregúntame «¿cómo dono?» y te guío paso a paso.",
+    "Pregúntame por un refugio o dónde entregar ayuda; también te paso el mapa.",
+  ],
+  ong: [
+    "Dime «¿qué insumos faltan?» y te muestro qué donar y a qué hospital.",
+    "Escríbeme un insumo (ej. «guantes») y te digo quién lo necesita ahora.",
+    "¿Listo para donar? Pregúntame «¿cómo ofrezco ayuda?».",
+  ],
+  voluntario: [
+    "Pregúntame por el estado de una solicitud o «insumos pendientes».",
+    "Puedo mostrarte lo de tus instituciones: dime «qué falta en mi hospital».",
+    "Tip: dime un insumo y te digo su estatus (pendiente / en camino / recibido).",
+  ],
+  medico: [
+    "Pídeme «responsable del hospital X» o «qué falta en El Llanito».",
+    "Busca un paciente por nombre o cédula y te digo en qué centro está.",
+    "Pregúntame por cualquier hospital: ubicación, responsable y necesidades.",
+  ],
+  admin: [
+    "Pídeme «responsable de [hospital]», «qué falta en [centro]» o busca a una persona.",
+    "Puedo darte datos de cualquier institución: responsables, contactos y necesidades.",
+    "Dime un insumo y te muestro quién lo pide y su estatus.",
+  ],
+};
+const tipsDe = (rol: string) => TIPS[rol] ?? TIPS.publico;
+function tipRandom(rol: string, evitar?: string) {
+  const opts = tipsDe(rol).filter((t) => t !== evitar);
+  return opts[Math.floor(Math.random() * opts.length)] ?? tipsDe(rol)[0];
+}
+function saludoInicial(rol: string, nombre: string | null): Msg {
+  const hola = nombre ? `¡Hola, ${nombre.split(" ")[0]}! ` : "¡Hola! ";
+  return { rol: "bot", texto: `${hola}Soy Avi 💜 ${tipRandom(rol)}` };
+}
 
 type ChatCtx = {
   msgs: Msg[];
@@ -14,16 +53,18 @@ type ChatCtx = {
   enviar: (q: string) => Promise<void>;
   toggleMic: (onTexto: (t: string) => void) => Promise<void>;
   limpiar: () => void;
+  nudge: () => void;
 };
 const Ctx = createContext<ChatCtx>({
-  msgs: [SALUDO], cargando: false, grabando: false,
-  enviar: async () => {}, toggleMic: async () => {}, limpiar: () => {},
+  msgs: [], cargando: false, grabando: false,
+  enviar: async () => {}, toggleMic: async () => {}, limpiar: () => {}, nudge: () => {},
 });
 
 // Una sola conversación compartida por la página /chat y el widget flotante.
 // Vive en el layout (persiste al navegar) + localStorage (persiste al recargar).
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [msgs, setMsgs] = useState<Msg[]>([SALUDO]);
+  const { rol, nombre } = useRol();
+  const [msgs, setMsgs] = useState<Msg[]>(() => [saludoInicial(rol, nombre)]);
   const [cargando, setCargando] = useState(false);
   const [grabando, setGrabando] = useState(false);
   const rec = useRef<MediaRecorder | null>(null);
@@ -77,9 +118,21 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     } catch { /* permiso denegado */ }
   }
 
-  const limpiar = () => setMsgs([SALUDO]);
+  const limpiar = () => setMsgs([saludoInicial(rol, nombre)]);
 
-  return <Ctx.Provider value={{ msgs, cargando, grabando, enviar, toggleMic, limpiar }}>{children}</Ctx.Provider>;
+  // Nudge proactivo (inactividad): añade un tip al azar, pero no insiste:
+  // máximo 1 mensaje del bot encima de lo último que dijo el usuario.
+  function nudge() {
+    if (cargando) return;
+    setMsgs((m) => {
+      let botsAlFinal = 0;
+      for (let i = m.length - 1; i >= 0 && m[i].rol === "bot"; i--) botsAlFinal++;
+      if (botsAlFinal >= 2) return m; // ya saludó/insistió; espera a que el usuario hable
+      return [...m, { rol: "bot", texto: tipRandom(rol, m[m.length - 1]?.texto) }];
+    });
+  }
+
+  return <Ctx.Provider value={{ msgs, cargando, grabando, enviar, toggleMic, limpiar, nudge }}>{children}</Ctx.Provider>;
 }
 
 export const useChat = () => useContext(Ctx);

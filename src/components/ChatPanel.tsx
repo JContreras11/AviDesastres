@@ -39,12 +39,18 @@ function renderRich(texto: string) {
 
 // Panel de chat reutilizable: misma conversación en la página /chat y en el widget.
 export function ChatPanel({ className = "" }: { className?: string }) {
-  const { msgs, cargando, grabando, enviar, toggleMic } = useChat();
+  const { msgs, cargando, grabando, enviar, toggleMic, nudge } = useChat();
   const [input, setInput] = useState("");
   const finRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll al último mensaje.
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, cargando]);
+
+  // Inactividad: si el usuario está en el chat y lleva rato sin hablar, Avi lanza un tip útil.
+  useEffect(() => {
+    const t = setTimeout(() => { if (!cargando) nudge(); }, 35000);
+    return () => clearTimeout(t);
+  }, [msgs, cargando, nudge]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
