@@ -97,3 +97,62 @@ export async function avisarDonacionHospital(hospitalId: string, texto: string) 
     responsable: tieneResp ? { nombre: hosp!.responsable_recepcion_nombre, contacto: hosp!.responsable_recepcion_contacto } : null,
   };
 }
+
+// ── Donación PÚBLICA desde una necesidad (cualquiera, con datos de contacto) ──
+// El donante "se registra" dejando nombre + teléfono/correo (sin cuenta). Abierto
+// a futuro para OTP/WhatsApp. El trigger notifica al hospital y a sus centros de acopio.
+export async function donarNecesidad(insumoId: string, datos: { cantidad: number; nombre: string; telefono?: string; email?: string }) {
+  const cant = Math.floor(Number(datos.cantidad));
+  if (!Number.isFinite(cant) || cant <= 0) return { ok: false as const, error: "Indica una cantidad válida." };
+  if (!datos.nombre?.trim()) return { ok: false as const, error: "Escribe tu nombre." };
+  if (!datos.telefono?.trim()) return { ok: false as const, error: "Deja un teléfono de contacto (para coordinar la entrega)." };
+
+  const a = createAdminClient();
+  const sc = await getScope();
+  const { data: insumo } = await a.from("insumos").select("hospital_id, nombre, hospitales(nombre, ubicacion)").eq("id", insumoId).single();
+  if (!insumo) return { ok: false as const, error: "La necesidad ya no existe." };
+
+  const { error } = await a.from("donaciones").insert({
+    insumo_id: insumoId, cantidad: cant, estado: "en_camino",
+    donante_user: sc.uid ?? null,
+    donante_nombre: datos.nombre.trim(),
+    donante_telefono: datos.telefono?.trim() || null,
+    donante_email: datos.email?.trim() || null,
+  });
+  if (error) return { ok: false as const, error: error.message };
+  await registrarLog("donar", "insumo", insumoId, { cantidad: cant, donante: datos.nombre.trim() });
+
+  // ¿A dónde llevarla? Centros de acopio relacionados con el hospital de la necesidad.
+  const centros = await centrosDeHospital((insumo as any).hospital_id);
+  return { ok: true as const, centros, hospital: (insumo as any).hospitales ?? null };
+}
+
+// Centros de acopio relacionados con un hospital (dónde entregar la donación).
+export async function centrosDeHospital(hospitalId: string) {
+  if (!hospitalId) return [];
+  const a = createAdminClient();
+  const { data } = await a.from("centro_hospital")
+    .select("centros_acopio(id,nombre,zona,ubicacion,gps_lat,gps_lng,contacto_telefono,horario)")
+    .eq("hospital_id", hospitalId);
+  return (data ?? []).map((r: any) => r.centros_acopio).filter(Boolean);
+}
+
+// Admin: define qué hospitales atiende un centro de acopio (N:M).
+export async function setCentroHospitales(centroId: string, hospitalIds: string[]) {
+  if (!(await getScope()).admin) return DENEGADO;
+  const a = createAdminClient();
+  await a.from("centro_hospital").delete().eq("centro_id", centroId);
+  if (hospitalIds.length) {
+    const { error } = await a.from("centro_hospital").insert(hospitalIds.map((h) => ({ centro_id: centroId, hospital_id: h })));
+    if (error) return { ok: false as const, error: error.message };
+  }
+  await registrarLog("editar", "centro", centroId, { hospitales: hospitalIds.length });
+  return { ok: true as const };
+}
+
+// Hospitales que atiende un centro (para el editor de relación).
+export async function hospitalesDeCentro(centroId: string) {
+  const a = createAdminClient();
+  const { data } = await a.from("centro_hospital").select("hospital_id").eq("centro_id", centroId);
+  return (data ?? []).map((r: any) => r.hospital_id);
+}

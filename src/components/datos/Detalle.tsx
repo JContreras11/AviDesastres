@@ -14,7 +14,8 @@ import {
   actualizarInsumo, eliminarInsumo, cambiarEstadoInsumo, cubrirInsumo, getInsumo,
   getHospital, actualizarHospital, eliminarHospital, upsertCentro, eliminarCentro,
 } from "@/app/actions/crud";
-import { crearDonacion, marcarRecibido, cancelarDonacion, avisarDonacionHospital } from "@/app/actions/donaciones";
+import { crearDonacion, marcarRecibido, cancelarDonacion, avisarDonacionHospital, setCentroHospitales, hospitalesDeCentro } from "@/app/actions/donaciones";
+import { listarHospitales } from "@/app/actions/listas";
 import { HospitalResponsables } from "@/components/datos/HospitalResponsables";
 
 const PRESENTACIONES = ["", "frasco", "tableta", "comprimido", "vial", "ampolla", "polvo", "jarabe", "solución", "otro"];
@@ -307,10 +308,24 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
 // Centro de acopio: alta/edición (admin) y vista de contacto/mapa (todos).
 export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onClose: () => void; onChanged?: () => void }) {
   const { puede, gestiona } = useRol();
+  const { rol } = useRol();
   const [c, setC] = useState<any>({ activo: true, ...centro });
   const nuevo = !centro?.id;
   // Crear centro = admin; editar uno existente = admin o miembro del centro.
   const editable = puede("editar") && (nuevo ? gestiona() : gestiona(null, centro?.id));
+
+  // Relación N:M centro -> hospitales que atiende (solo admin, centro existente).
+  const [hosps, setHosps] = useState<any[]>([]);
+  const [selHosp, setSelHosp] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (nuevo || rol !== "admin") return;
+    listarHospitales().then((hs) => setHosps((hs ?? []).filter((h: any) => h.tipo !== "refugio")));
+    hospitalesDeCentro(centro.id).then((ids: string[]) => setSelHosp(new Set(ids)));
+  }, [nuevo, rol, centro?.id]);
+  async function guardarHospitales() {
+    const r = await setCentroHospitales(centro.id, [...selHosp]);
+    if ((r as any).ok) toast.success("Hospitales que atiende actualizados"); else toast.error((r as any).error);
+  }
 
   async function guardar() {
     const r = await upsertCentro(c);
@@ -355,6 +370,25 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={c.activo ?? true} onChange={(e) => setC({ ...c, activo: e.target.checked })} /> Activo
             </label>
+          )}
+
+          {/* Hospitales que atiende este centro (a dónde llevan las donaciones). Solo admin. */}
+          {!nuevo && rol === "admin" && (
+            <div className="border-t pt-3">
+              <p className="text-sm font-medium mb-1">🏥 Hospitales que atiende</p>
+              <p className="text-xs text-muted-foreground mb-2">Cuando alguien dona a una necesidad de estos hospitales, se le indica este centro para entregar.</p>
+              <div className="max-h-40 overflow-auto rounded-lg border divide-y">
+                {hosps.map((h) => (
+                  <label key={h.id} className="flex items-center gap-2 p-2 text-sm">
+                    <input type="checkbox" className="size-4" checked={selHosp.has(h.id)}
+                      onChange={() => setSelHosp((s) => { const n = new Set(s); n.has(h.id) ? n.delete(h.id) : n.add(h.id); return n; })} />
+                    {h.nombre}
+                  </label>
+                ))}
+                {hosps.length === 0 && <p className="p-2 text-xs text-muted-foreground">Sin hospitales.</p>}
+              </div>
+              <Button type="button" variant="outline" size="sm" className="mt-2" onClick={guardarHospitales}>Guardar hospitales</Button>
+            </div>
           )}
           <div className="flex flex-wrap gap-2">
             {c.contacto_telefono && <a href={`tel:${c.contacto_telefono}`} className="flex-1"><Button variant="outline" size="lg" className="w-full">📞 Llamar</Button></a>}

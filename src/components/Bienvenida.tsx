@@ -51,7 +51,7 @@ export function Bienvenida() {
           <p className="text-xs text-muted-foreground border-t pt-3 leading-snug">
             <strong className="text-foreground">Descargo de responsabilidad:</strong> gran parte de los datos los ingresan
             voluntarios y la comunidad. AviHelp no garantiza su exactitud — confirma siempre llamando al centro antes de trasladar
-            a una persona o insumos. Emergencias: <strong className="text-foreground">171</strong>.
+            a una persona o insumos.
           </p>
         </div>
         <DialogFooter>
