@@ -66,3 +66,9 @@ Orden: F2 (core) → F3 → F1. Cada una: rama propia o commits chicos en auto/o
 - Ruta `/mis-cargas` (login). **Grid** de imágenes subidas por el usuario, **zoom al tocar** (`Img` + react-medium-image-zoom ya instalado).
 - Al lado: info extraída de esa carga (insumos → insumos+hospital+info; lista personas → personas **editables**, poder añadir).
 - Data: ligar cada carga (storage `fotos`) con el usuario + entidades extraídas. Revisar `documentos`/`raw_extraccion`; quizá columna `user_id`/tabla `cargas`. Migración SOLO dev.
+
+## Ramas de agentes en origin (para review/merge de Jesús AM)
+- `origin/claude-4/refugios` (16ff2d2) — refugios hardening (try-finally, validación, a11y, mapa robusto data vacía). Build verde self-gated. → next: desaparecidos.
+- `origin/claude-2/personas-hardening` (f99f801..6edb596, 8 commits) — personas + InsumoDialog + ui/dialog a11y. Build verde cada commit. → next: Hospital/CentroDialog.
+- `claude-jesus-6/dashboard` (ba1cb3f) — dashboard empty-states + a11y + loading skeleton. Pedido push a origin. → next: admin panels.
+- Integración: cada rama separada; Jesús mergea AM (no merges cruzados nocturnos). Verificar build+smoke por rama antes de mergear.
