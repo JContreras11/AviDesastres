@@ -20,7 +20,9 @@ const MAX_CHUNKS = 16;  // tope de seguridad (~56k chars)
 
 // Trocea por LONGITUD de caracteres (no por líneas): unpdf suele devolver el texto
 // sin saltos de línea, así que partir por "\n" dejaba un único trozo gigante que se
-// cortaba. Corta cerca de un salto/espacio para no romper a media palabra/fila.
+// cortaba. Para no romper a media fila, el corte prefiere caer JUSTO DESPUÉS de un
+// número seguido de espacio (cédula/correlativo/cantidad = límite natural entre
+// registros); si no, en un salto o espacio.
 function trozos(texto: string): string[] {
   const out: string[] = [];
   const n = texto.length;
@@ -28,10 +30,19 @@ function trozos(texto: string): string[] {
   while (i < n) {
     let end = Math.min(i + CHUNK, n);
     if (end < n) {
-      const ventana = texto.slice(i, end);
-      const nl = ventana.lastIndexOf("\n");
-      const sp = ventana.lastIndexOf(" ");
-      const corte = nl > CHUNK * 0.6 ? nl : sp > CHUNK * 0.6 ? sp : ventana.length;
+      const v = texto.slice(i, end);
+      const nl = v.lastIndexOf("\n");
+      let corte: number;
+      if (nl > CHUNK * 0.6) corte = nl;
+      else {
+        // Fin de un número LARGO (cédula/cantidad: 6+ dígitos, con o sin comas) = fin de registro.
+        // Evita cortar tras correlativos cortos (que dejarían el número separado del nombre).
+        const nums = [...v.matchAll(/\d[\d.,]{4,}\d(?=\s)/g)];
+        const m = nums[nums.length - 1];
+        const finNum = m ? (m.index ?? 0) + m[0].length : -1;
+        if (finNum > CHUNK * 0.5) corte = finNum;
+        else { const sp = v.lastIndexOf(" "); corte = sp > CHUNK * 0.5 ? sp : v.length; }
+      }
       end = i + corte;
     }
     out.push(texto.slice(i, end));
