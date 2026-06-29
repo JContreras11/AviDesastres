@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@/lib/chat-store";
 
-// Convierte URLs del texto en enlaces clicables que abren en nueva pestaña.
+// URLs externas (https) abren en pestaña nueva; rutas internas (/ofrecer, /compartir…) navegan en la misma app.
 function conLinks(texto: string) {
-  return texto.split(/(https?:\/\/[^\s)]+)/g).map((p, i) =>
-    /^https?:\/\//.test(p)
-      ? <a key={i} href={p} target="_blank" rel="noreferrer" className="underline text-primary break-all">{p}</a>
-      : <span key={i}>{p}</span>
-  );
+  const re = /(https?:\/\/[^\s)]+|\/(?:ofrecer|compartir|refugios|desaparecidos|dashboard|chat|admin\/[a-z]+)[^\s).,]*)/g;
+  return texto.split(re).map((p, i) => {
+    if (/^https?:\/\//.test(p)) return <a key={i} href={p} target="_blank" rel="noreferrer" className="underline text-primary break-all">{p}</a>;
+    if (/^\//.test(p)) return <a key={i} href={p} className="underline text-primary font-medium">{p}</a>;
+    return <span key={i}>{p}</span>;
+  });
 }
 
 // Panel de chat reutilizable: misma conversación en la página /chat y en el widget.

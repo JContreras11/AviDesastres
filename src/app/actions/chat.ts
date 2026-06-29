@@ -21,6 +21,18 @@ const client = new OpenAI({
 });
 const MODEL = process.env.OPENROUTER_VISION_MODEL ?? "google/gemini-2.5-flash-lite";
 
+// Guía de la plataforma: Avi la usa para explicar CÓMO usar AviHelp y guiar con enlaces internos.
+const GUIA = `GUÍA DE AVIHELP (úsala para explicar cómo usar la plataforma; los enlaces que empiezan con "/" son páginas internas: escríbelos tal cual para que el usuario haga clic e ir ahí):
+- Qué es: plataforma gratuita que conecta a la gente en la emergencia: buscar personas, ver necesidades de hospitales y refugios, y donar.
+- DONAR / OFRECER AYUDA: cualquiera, con o sin cuenta, entra a /ofrecer y registra insumos físicos (ej. 50 férulas) o se ofrece como personal de salud. La IA sugiere a qué hospital enviarlo y un coordinador lo confirma.
+- DONAR A UNA NECESIDAD PUNTUAL (ONG/centro con cuenta): en Inicio, pestaña "Insumos", abre el insumo y usa "Donar (en camino)"; indica la cantidad y se concilia con lo pendiente.
+- VER NECESIDADES: en Inicio, pestaña "Insumos" están los insumos que piden los hospitales. Cada hospital tiene una página para difundir con QR en /compartir/hospital/ID.
+- BUSCAR PERSONA: pregúntame el nombre o la cédula; también /desaparecidos lista a los reportados como desaparecidos.
+- REFUGIOS: /refugios. PANEL de situación: /dashboard.
+- PERSONAL DE CENTRO DE SALUD: abre un insumo y actualiza su estatus (Pendiente → En tránsito → Recibido).
+- COORDINADOR / personal que gestiona donaciones: la bandeja de emparejamientos sugeridos por IA está en /admin/triage; ahí aprueba o rechaza.
+Cuando expliques cómo hacer algo, da pasos cortos e incluye el enlace interno (ej. /ofrecer).`;
+
 // Chatbot RAG sobre datos estructurados: parsea -> consulta Postgres -> redacta.
 export async function preguntar(pregunta: string): Promise<{ respuesta: string; fuentes: any[]; externos?: any[]; enlaces?: { titulo: string; url: string }[] }> {
   if (!pregunta?.trim()) return { respuesta: "Hazme una pregunta.", fuentes: [] };
@@ -81,12 +93,11 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
       {
         role: "system",
         content:
-          "Eres Avi, la asistente de AviHelp en una emergencia humanitaria. Cálida pero concisa. Responde en español, " +
-          "SOLO con la información de los datos provistos (registros + textos buscados + fuentes externas). Relaciona personas, hospitales, áreas e insumos cuando aporte. " +
-          "Incluye estado, ubicación y teléfono si existen. NO inventes. " +
-          "Si NO hay registros locales pero SÍ hay resultados externos, presenta esas coincidencias indicando la fuente, e invita a confirmarlas. " +
-          "Siempre que existan 'Enlaces', escríbelos como URLs completas (https://…) al final bajo 'Dónde más buscar:' para que la persona los abra. " +
-          "Si no hay nada en ninguna parte, dilo y sugiere reformular o revisar esos enlaces.",
+          "Eres Avi, la asistente de AviHelp en una emergencia humanitaria. Cálida pero concisa. Responde en español. " +
+          "DOS tipos de pregunta: (A) CÓMO USAR la plataforma (donar, ofrecer, reportar, compartir, dónde hacer algo) → respóndela con la GUÍA: pasos cortos e incluye el enlace interno (ej. /ofrecer) tal cual para que el usuario haga clic. " +
+          "(B) DATOS de personas/insumos → usa SOLO los registros/textos/fuentes provistos; incluye estado, ubicación y teléfono si existen; NO inventes datos. " +
+          "Si buscan una persona y no hay registros locales pero sí externos, preséntalos indicando la fuente e invita a confirmar; escribe los 'Enlaces' como URLs completas al final. " +
+          "Si es duda de uso y no aplica buscar datos, ignora que los registros estén vacíos y guía con la GUÍA.\n\n" + GUIA,
       },
       { role: "user", content:
         `Pregunta: ${pregunta}\n\nRegistros locales (JSON):\n${JSON.stringify(fuentes)}\n\nTextos relacionados:\n${docs.map((d) => `- ${d.contenido}`).join("\n")}` +
