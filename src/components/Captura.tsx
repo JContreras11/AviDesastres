@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { analizarImagen, analizarVoz, analizarAudio, guardarDocumento } from "@/app/actions/procesar";
-import { analizarPDF, analizarExcel, analizarURL } from "@/app/actions/ingesta";
+import { analizarPDF, analizarExcel, analizarURL, listarHospitalesSelect } from "@/app/actions/ingesta";
 import { decodeQR, tipoArchivo } from "@/lib/qr";
 import { encolar } from "@/lib/offline";
 import { realzarImagen } from "@/lib/realce";
@@ -19,8 +19,12 @@ const CONCURRENCIA = 2;
 export function Captura() {
   const { puede } = useRol();
   const qc = useQueryClient();
-  const refrescar = () => ["personas", "insumos", "hospitales", "centros"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const refrescar = () => {
+    ["personas", "insumos", "hospitales", "centros"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    listarHospitalesSelect().then(setHospitales).catch(() => {}); // por si se creó una institución nueva
+  };
   const [items, setItems] = useState<ColaItem[]>([]);
+  const [hospitales, setHospitales] = useState<{ id: string; nombre: string; tipo: string }[]>([]);
   const [grabando, setGrabando] = useState(false);
   const [segs, setSegs] = useState(0);
   const [drag, setDrag] = useState(false);
@@ -33,6 +37,9 @@ export function Captura() {
   const chunks = useRef<Blob[]>([]);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const enVuelo = useRef<Set<string>>(new Set());
+
+  // Lista de instituciones existentes para emparejar (evita duplicados al guardar).
+  useEffect(() => { listarHospitalesSelect().then(setHospitales).catch(() => {}); }, []);
 
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -249,6 +256,7 @@ export function Captura() {
               <DocCard
                 key={it.id}
                 item={it}
+                hospitales={hospitales}
                 onChange={(preview: DocumentoAnalizado) => upd(it.id, { preview })}
                 onNotas={(notas: string) => upd(it.id, { notas })}
                 onGuardar={() => guardar(it)}

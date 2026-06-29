@@ -139,9 +139,12 @@ async function guardar(
   const supabase = createAdminClient();
   const nota = notas?.trim() || null;
 
-  // 1) Hospital detectado -> upsert (clave natural: nombre).
+  // 1) Hospital: si la UI ya emparejó una institución existente (id), se usa directo (sin duplicar).
+  //    Si no, se busca por nombre y, en último caso, se crea (creación deliberada o no detectada).
   let hospitalId: string | null = null;
-  if (d.hospital?.nombre) {
+  if (d.hospital?.id) {
+    hospitalId = d.hospital.id;
+  } else if (d.hospital?.nombre) {
     const { data: existente } = await supabase
       .from("hospitales").select("id").eq("nombre", d.hospital.nombre).maybeSingle();
     if (existente) hospitalId = existente.id;

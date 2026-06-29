@@ -56,7 +56,8 @@ export type TipoDocumento =
 export type DocumentoAnalizado = {
   tipo: TipoDocumento;
   contexto: string | null; // ej. "Pacientes ingresados por sismo 24/6/2026"
-  hospital: { nombre: string | null; ubicacion: string | null } | null;
+  // id: institución existente ya emparejada (link directo, sin duplicar). null = crear nueva.
+  hospital: { id?: string | null; nombre: string | null; ubicacion: string | null } | null;
   personas: PersonaExtraida[];
   insumos: InsumoExtraido[];
 };

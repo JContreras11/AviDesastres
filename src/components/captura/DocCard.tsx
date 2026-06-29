@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,28 @@ import { Img } from "@/components/Img";
 import type { DocumentoAnalizado } from "@/lib/ai/vision";
 import type { ColaItem } from "./tipos";
 
+export type HospitalOpt = { id: string; nombre: string; tipo: string };
+
 const ESTADOS = ["vivo", "herido", "desaparecido", "fallecido", "desconocido"];
 const PRIORIDADES = ["baja", "media", "alta", "critica"];
 
 function set<T>(arr: T[], i: number, patch: Partial<T>): T[] {
   return arr.map((x, j) => (j === i ? { ...x, ...patch } : x));
+}
+
+// Normaliza un nombre de institución para emparejar (ignora acentos, prefijos y puntuación).
+const norm = (s: string | null | undefined) =>
+  (s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")    .replace(/\b(hospital|clinica|instituto|medico|centro|de|del|la|el|los|las)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+
+// Empareja el nombre detectado por IA contra la lista de instituciones existentes.
+function emparejar(nombre: string | null | undefined, lista: HospitalOpt[]): HospitalOpt | null {
+  const n = norm(nombre);
+  if (!n) return null;
+  let m = lista.find((h) => norm(h.nombre) === n);
+  if (m) return m;
+  m = lista.find((h) => { const hn = norm(h.nombre); return !!hn && (hn.includes(n) || n.includes(hn)); });
+  return m ?? null;
 }
 
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
@@ -27,15 +45,25 @@ const inputCls = "h-11 text-base text-foreground";
 const selectCls = "h-11 text-base border rounded-lg px-2 bg-background w-full";
 
 export function DocCard({
-  item, onChange, onNotas, onGuardar, onDescartar,
+  item, onChange, onNotas, onGuardar, onDescartar, hospitales = [],
 }: {
   item: ColaItem;
   onChange: (p: DocumentoAnalizado) => void;
   onNotas: (notas: string) => void;
   onGuardar: () => void;
   onDescartar: () => void;
+  hospitales?: HospitalOpt[];
 }) {
   const p = item.preview;
+
+  // Auto-empareja el hospital detectado con uno existente (link por id, sin duplicar).
+  // id undefined = aún sin resolver; tras esto: uuid (existente) o null (crear nuevo).
+  useEffect(() => {
+    if (item.estado !== "listo" || !p?.hospital?.nombre || p.hospital.id !== undefined || !hospitales.length) return;
+    const m = emparejar(p.hospital.nombre, hospitales);
+    onChange({ ...p, hospital: { id: m ? m.id : null, nombre: m ? m.nombre : p.hospital.nombre, ubicacion: p.hospital.ubicacion ?? null } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.estado, hospitales, p?.hospital?.nombre, p?.hospital?.id]);
 
   if (item.estado !== "listo") {
     const map: Record<string, { txt: string; cls: string }> = {
@@ -81,15 +109,37 @@ export function DocCard({
         <Input value={p.contexto ?? ""} onChange={(e) => onChange({ ...p, contexto: e.target.value })} className={inputCls} />
       </Campo>
 
-      {/* Hospital siempre editable: a veces la lista no trae el hospital arriba y se escribe a mano. */}
-      <Campo label="🏥 Hospital / institución (manual si no aparece en la imagen)">
-        <Input
-          value={p.hospital?.nombre ?? ""}
-          onChange={(e) => onChange({ ...p, hospital: { nombre: e.target.value, ubicacion: p.hospital?.ubicacion ?? null } })}
-          placeholder="Escribe el hospital de esta lista"
-          className={inputCls}
-        />
+      {/* Hospital: SELECT contra existentes (se enlaza por id, sin duplicar). Solo se crea
+          uno nuevo si lo eliges a propósito o si la IA no lo detectó. */}
+      <Campo label="🏥 Hospital / institución">
+        <select
+          value={p.hospital?.id ?? (p.hospital?.nombre ? "__nuevo__" : "")}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "") onChange({ ...p, hospital: null });
+            else if (v === "__nuevo__") onChange({ ...p, hospital: { id: null, nombre: p.hospital?.nombre ?? "", ubicacion: p.hospital?.ubicacion ?? null } });
+            else { const h = hospitales.find((x) => x.id === v); onChange({ ...p, hospital: { id: v, nombre: h?.nombre ?? "", ubicacion: p.hospital?.ubicacion ?? null } }); }
+          }}
+          className={selectCls}
+        >
+          <option value="">— Ninguno —</option>
+          {hospitales.map((h) => (
+            <option key={h.id} value={h.id}>{h.nombre}{h.tipo === "clinica" ? " (clínica)" : h.tipo === "refugio" ? " (refugio)" : ""}</option>
+          ))}
+          <option value="__nuevo__">➕ Crear institución nueva…</option>
+        </select>
       </Campo>
+      {/* Crear nueva (deliberado / no detectada): nombre editable solo en este caso. */}
+      {p.hospital && !p.hospital.id && (
+        <Campo label="Nombre de la nueva institución">
+          <Input
+            value={p.hospital.nombre ?? ""}
+            onChange={(e) => onChange({ ...p, hospital: { id: null, nombre: e.target.value, ubicacion: p.hospital?.ubicacion ?? null } })}
+            placeholder="Ej: Clínica La Floresta"
+            className={inputCls}
+          />
+        </Campo>
+      )}
 
       {/* Personas — cada una su sub-card editable */}
       {p.personas.length > 0 && (

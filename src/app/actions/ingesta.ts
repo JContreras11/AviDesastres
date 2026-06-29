@@ -2,20 +2,61 @@
 
 import { analizarTexto } from "@/lib/ai/vision";
 import { pdfATexto } from "@/lib/pdf";
+import { createAdminClient } from "@/lib/supabase/server";
 import type { AnalisisResult } from "@/app/actions/procesar";
+
+// Hospitales/clínicas/refugios existentes para el selector del DocCard (evita duplicar por nombre).
+export async function listarHospitalesSelect(): Promise<{ id: string; nombre: string; tipo: string }[]> {
+  const s = createAdminClient();
+  const { data } = await s.from("hospitales").select("id,nombre,tipo").order("nombre");
+  return data ?? [];
+}
 
 // Nuevos formatos de carga (PDF, Excel, QR/URL). Cada uno EXTRAE texto y lo pasa
 // por el MISMO análisis IA + preview editable que foto/voz. No toca el flujo existente.
 const EXIF_VACIO = { gps_lat: null, gps_lng: null, foto_fecha: null };
-const MAX = 24000; // recorte para no pasarse de contexto del modelo
+const CHUNK = 4000;     // chars/llamada (~100 filas): JSON chico que NO se trunca; los trozos van en paralelo
+const MAX_CHUNKS = 14;  // tope de seguridad (~56k chars)
+
+// Trocea por líneas sin partir filas, respetando el límite de chars por trozo.
+function trozos(texto: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (const ln of texto.split(/\r?\n/)) {
+    if (cur && cur.length + ln.length + 1 > CHUNK) { out.push(cur); cur = ""; }
+    cur += (cur ? "\n" : "") + ln;
+  }
+  if (cur.trim()) out.push(cur);
+  return out.length ? out : [texto];
+}
 
 // Convierte texto extraído en un preview editable (la IA decide si hay personas/insumos).
+// Listas largas (PDF/Excel de pacientes) se trocean y analizan en paralelo, luego se fusionan:
+// cada trozo da un JSON pequeño, así nunca se corta por longitud.
 async function analizarLista(texto: string, etiqueta: string): Promise<AnalisisResult> {
-  if (!texto?.trim()) return { ok: false, error: `No se extrajo texto de ${etiqueta}.` };
-  const res = await analizarTexto(texto.slice(0, MAX));
-  if (!res.ok) return { ok: false, error: res.motivo };
-  res.data.contexto = `📄 ${etiqueta}`;
-  return { ok: true, preview: res.data, foto: null, exif: EXIF_VACIO, confianza: res.confianza, modelo: res.modelo };
+  const limpio = (texto ?? "").trim();
+  if (!limpio) return { ok: false, error: `No se extrajo texto de ${etiqueta}.` };
+
+  const partes = trozos(limpio).slice(0, MAX_CHUNKS);
+  const reses = await Promise.all(partes.map((t) => analizarTexto(t)));
+  const oks = reses.filter((r): r is Extract<typeof r, { ok: true }> => r.ok);
+  if (!oks.length) {
+    const fallo = reses.find((r) => !r.ok) as { motivo?: string } | undefined;
+    return { ok: false, error: fallo?.motivo ?? "No se pudo interpretar el documento." };
+  }
+
+  const base = oks[0].data;
+  const conPersonas = oks.find((o) => o.data.personas.length)?.data;
+  const preview = {
+    ...base,
+    contexto: `📄 ${etiqueta}`,
+    tipo: conPersonas?.tipo ?? base.tipo,
+    hospital: oks.map((o) => o.data.hospital).find(Boolean) ?? null,
+    personas: oks.flatMap((o) => o.data.personas),
+    insumos: oks.flatMap((o) => o.data.insumos),
+  };
+  const confianza = Math.min(...oks.map((o) => o.confianza));
+  return { ok: true, preview, foto: null, exif: EXIF_VACIO, confianza, modelo: oks[0].modelo };
 }
 
 // La lectura de PDF puede fallar en algún entorno. Nunca dejar que un throw burbujee
