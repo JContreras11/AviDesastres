@@ -95,3 +95,6 @@ Orden: F2 (core) → F3 → F1. Cada una: rama propia o commits chicos en auto/o
 - **base-ui ELIMINADO por completo** (rama claude-2/personas-hardening, 71bc7c8, -736 líneas, quitado de package.json) → riesgo de freeze fuera del todo.
 - **Bug realtime** ('postgres_changes after subscribe') arreglado (31a013e) y VERIFICADO PASS (claude-6).
 - Ramas de agentes en origin para merge: claude-4/refugios, claude-2/personas-hardening, claude-jesus-6/{dashboard,admin,landing}.
+
+## Integración (heartbeat)
+- build COMBINADO F1+F2+F3 en auto/overnight = VERDE. Las 3 features apilan limpio. Listo para merge.
