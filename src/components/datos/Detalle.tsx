@@ -367,6 +367,9 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
   // Crear centro = admin; editar uno existente = admin o miembro del centro.
   const editable = puede("editar") && (nuevo ? gestiona() : gestiona(null, centro?.id));
 
+  const [guardando, setGuardando] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { bodyRef.current?.focus(); }, []);
   // Relación N:M centro -> hospitales que atiende (solo admin, centro existente).
   const [hosps, setHosps] = useState<any[]>([]);
   const [selHosp, setSelHosp] = useState<Set<string>>(new Set());
@@ -381,8 +384,13 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
   }
 
   async function guardar() {
+    if (!c?.nombre?.trim()) { toast.error("El nombre del centro es obligatorio."); return; }
+    setGuardando(true);
     const r = await upsertCentro(c);
-    if (r.ok) { toast.success(nuevo ? "Centro creado" : "Centro actualizado"); onChanged?.(); onClose(); } else toast.error((r as any).error);
+    setGuardando(false);
+    // En error: no se cierra ni se resetea `c` — los cambios quedan para reintentar.
+    if (r.ok) { toast.success(nuevo ? "Centro creado" : "Centro actualizado"); onChanged?.(); onClose(); }
+    else toast.error((r as any).error ?? "No se pudo guardar. Inténtalo de nuevo.");
   }
   async function borrar() {
     if (!confirm("¿Eliminar este centro de acopio?")) return;
@@ -396,7 +404,7 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-lg">
         <DialogHeader><DialogTitle className="text-xl pr-8">📦 {nuevo ? "Nuevo centro de acopio" : c.nombre}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div ref={bodyRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
           <Campo label="Nombre"><Input readOnly={ro} value={c.nombre ?? ""} onChange={(e) => setC({ ...c, nombre: e.target.value })} className={inputCls} /></Campo>
           <div className="grid grid-cols-2 gap-2">
             <Campo label="Zona"><Input readOnly={ro} value={c.zona ?? ""} placeholder="Los Palos Grandes…" onChange={(e) => setC({ ...c, zona: e.target.value })} className={inputCls} /></Campo>
@@ -451,7 +459,7 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
         {editable && (
           <DialogFooter className="gap-2">
             {!nuevo && <Button variant="ghost" size="lg" onClick={borrar} className="text-destructive sm:mr-auto">Eliminar</Button>}
-            <Button size="lg" onClick={guardar} className="px-8">{nuevo ? "Crear" : "Guardar"}</Button>
+            <Button size="lg" onClick={guardar} disabled={guardando} className="px-8">{guardando ? "Guardando…" : nuevo ? "Crear" : "Guardar"}</Button>
           </DialogFooter>
         )}
       </DialogContent>
@@ -470,6 +478,10 @@ export function HospitalDialog({ hospital, onClose, onChanged }: { hospital: any
   const [enviado, setEnviado] = useState(false);
   const [resp, setResp] = useState<{ nombre?: string | null; contacto?: string | null } | null>(null);
   const [donando, setDonando] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (h || err) bodyRef.current?.focus(); }, [h, err]);
   async function donar() {
     if (!nota.trim()) { toast.error("Escribe qué quieres donar."); return; }
     setDonando(true);
@@ -480,11 +492,22 @@ export function HospitalDialog({ hospital, onClose, onChanged }: { hospital: any
     toast.success("¡Gracias! 💜 Avisamos al hospital.");
   }
 
-  useEffect(() => { getHospital(hospital.id).then((r) => { setH(r.hospital); setInsumos(r.insumos); }); }, [hospital.id]);
+  useEffect(() => {
+    let vivo = true;
+    setErr(null); setH(null);
+    getHospital(hospital.id)
+      .then((r) => { if (!vivo) return; if (!r?.hospital) { setErr("No se encontró este hospital."); return; } setH(r.hospital); setInsumos(r.insumos ?? []); })
+      .catch(() => { if (vivo) setErr("No se pudo cargar. Revisa tu conexión e inténtalo de nuevo."); });
+    return () => { vivo = false; };
+  }, [hospital.id]);
 
   async function guardarResp() {
+    if (!h?.nombre?.trim()) { toast.error("El nombre del hospital es obligatorio."); return; }
+    setGuardando(true);
     const r = await actualizarHospital(hospital.id, h);
-    if (r.ok) { toast.success("Hospital actualizado"); onChanged?.(); } else toast.error((r as any).error);
+    setGuardando(false);
+    if (r.ok) { toast.success("Hospital actualizado"); onChanged?.(); }
+    else toast.error((r as any).error ?? "No se pudo guardar. Inténtalo de nuevo.");
   }
   async function borrarHospital() {
     if (!confirm(`¿Eliminar ${hospital.nombre}? Se borran sus insumos. No se puede deshacer.`)) return;
@@ -503,8 +526,15 @@ export function HospitalDialog({ hospital, onClose, onChanged }: { hospital: any
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-lg">
         <DialogHeader><DialogTitle className="text-xl pr-8">🏥 {hospital.nombre}</DialogTitle></DialogHeader>
+        {err && (
+          <div ref={bodyRef} tabIndex={-1} className="py-6 text-center text-sm text-muted-foreground outline-none">
+            <p className="mb-3">⚠️ {err}</p>
+            <Button variant="outline" size="lg" onClick={onClose}>Cerrar</Button>
+          </div>
+        )}
+        {!h && !err && <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Cargando…</div>}
         {h && (
-          <div className="flex flex-col gap-3 text-sm">
+          <div ref={bodyRef} tabIndex={-1} className="flex flex-col gap-3 text-sm outline-none">
             {h.ubicacion && <p>📍 {h.ubicacion}</p>}
             <p className="text-muted-foreground">{hospital.personas ?? 0} personas · {insumos.length} insumos pendientes · {hospital.criticos ?? 0} críticos</p>
 
@@ -581,7 +611,7 @@ export function HospitalDialog({ hospital, onClose, onChanged }: { hospital: any
                   <Input value={h.responsable_recepcion_contacto ?? ""} onChange={(e) => setH({ ...h, responsable_recepcion_contacto: e.target.value })} className={inputCls} />
                 </Campo>
                 <div className="flex gap-2">
-                  <Button size="lg" onClick={guardarResp} className="flex-1">Guardar</Button>
+                  <Button size="lg" onClick={guardarResp} disabled={guardando} className="flex-1">{guardando ? "Guardando…" : "Guardar"}</Button>
                   {rol === "admin" && <Button size="lg" variant="ghost" onClick={borrarHospital} className="text-destructive">Eliminar</Button>}
                 </div>
                 <Separator />
