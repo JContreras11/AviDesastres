@@ -80,6 +80,8 @@ Orden: F2 (core) → F3 → F1. Cada una: rama propia o commits chicos en auto/o
 - Ruta `/mis-cargas` (login). **Grid** de imágenes subidas por el usuario, **zoom al tocar** (`Img` + react-medium-image-zoom ya instalado).
 - Al lado: info extraída de esa carga (insumos → insumos+hospital+info; lista personas → personas **editables**, poder añadir).
 - Data: ligar cada carga (storage `fotos`) con el usuario + entidades extraídas. Revisar `documentos`/`raw_extraccion`; quizá columna `user_id`/tabla `cargas`. Migración SOLO dev.
+- ✅ HECHO (commits 6902c2a + 1a72b6e). Modelo: tabla `cargas(user_id, foto, tipo, raw, resumen, hospital_id, …)` + columna nullable `carga_id` en `personas` e `insumos`. `guardar()` (procesar.ts) crea la carga del uploader y liga insumos/personas creados; a personas existentes huérfanas (carga_id null) las reclama vía camposFaltantes. Migración `20260629140000_cargas.sql` aplicada a DEV vía psql (aditiva e idempotente), NO a prod. UI `/mis-cargas` (login, ya cubierto por middleware): grid mobile-first + zoom (Img) + PersonaDialog/InsumoDialog editables + añadir persona (`crearPersona`). Link en Nav.
+  - Limitación: el histórico previo a la migración NO tiene `carga_id`, así que la galería solo muestra cargas nuevas. Si una persona ya pertenecía a otra carga no se re-asigna (se conserva la primera). Hoy `limit(100)` cargas (sin paginación).
 
 ## Ramas de agentes en origin (para review/merge de Jesús AM)
 - `origin/claude-4/refugios` (16ff2d2) — refugios hardening (try-finally, validación, a11y, mapa robusto data vacía). Build verde self-gated. → next: desaparecidos.
