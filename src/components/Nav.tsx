@@ -16,8 +16,8 @@ const LINKS = [
   { href: "/dashboard", label: "Panel" },
   { href: "/chat", label: "Avi" },
 ];
-// Visitante sin cuenta: solo Inicio, Donar y Avi (lo demás exige login).
-const PUB_HREFS = new Set(["/", "/ofrecer", "/chat"]);
+// Visitante sin cuenta: Inicio, Donar, Avi + refugios/desaparecidos (solo ver/buscar).
+const PUB_HREFS = new Set(["/", "/ofrecer", "/chat", "/desaparecidos", "/refugios"]);
 
 export function Nav() {
   const { email } = useRol();
