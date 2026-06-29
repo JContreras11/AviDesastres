@@ -45,6 +45,20 @@ Seguro/alto valor primero; lo invasivo al final y solo si el gate lo cubre.
 
 ## Hallazgos de pruebas
 - #418 hydration en chat-home (entrada pública) — ARREGLADO (ee85247). Causa: `Math.random` en render (`chat-store.tsx`).
+- Entorno worktree: `node_modules` venía symlinkeado a /Users/jesusc/Code/AviHelp -> Turbopack falla ("Symlink invalid, points out of fs root"). Se materializó con `pnpm install --offline --frozen-lockfile`. Faltaba `.env.local` (copiado del repo principal, gitignored). Tras eso `pnpm build` queda VERDE.
+
+## F2 progreso — Donación inteligente con Avi (COMPLETA, 5 slices)
+Commits: 9f3bea3 (s1), faa8ab9 (s2), 9b7883d (s3), 2a04ff0 (s4), 43f3bd7 (s5). Build verde en cada uno.
+- s1: /ofrecer logueado no pide nombre/teléfono; `crearOferta` autocompleta del perfil. (page.tsx ahora server wrapper + OfrecerForm.tsx client.)
+- s2: toda oferta ligada a centro/refugio (`ofertas.refugio_id` -> hospitales tipo refugio). Selector obligatorio + geolocalización ordena/preselecciona el más cercano. Notificación encolada al centro vía helper reutilizable `notificarInstitucion` (fallback a admins).
+- s3: `/mis-donaciones` (login) lista ofertas propias + cancelar (estado local, sin router.refresh). Link en navbar.
+- s4: `extraerDonacion(FormData)` reusa vision.ts (foto/audio/texto) -> productos+cantidades; `crearOfertasMixtas` crea una oferta por producto (donación MIXTA) con 1 notificación-resumen.
+- s5: tras crear, `sugerenciasDeOfertas` lee el match enriquecido (hospital + ÁREA del insumo) y Avi lo muestra en la confirmación.
+
+DECISIONES / PENDIENTES:
+- Modelo: se reusó `ofertas` (no `donaciones`). `donaciones` queda atado a una necesidad puntual (insumo_id NOT NULL); las ofertas son supply general con match human-in-the-loop. "Mis donaciones" muestra ofertas; las donaciones de `donarNecesidad` NO se listan ahí aún (a futuro unificar la vista).
+- Migración `20260629120000_oferta_centro_entrega.sql`: SOLO additiva (columna nullable). Aplicada a DEV vía psql directo (idempotente, sin tocar historial por concurrencia de agentes). NO aplicada a prod.
+- Audio: input file `accept="audio/*" capture` (no MediaRecorder en página) para mantenerlo liviano.
 
 ## FEATURES MUST-HAVE (Jesús, prioridad máxima — implementar en este worktree)
 Orden: F2 (core) → F3 → F1. Cada una: rama propia o commits chicos en auto/overnight, gate `pnpm build`, checkpoint, sin romper smoke.
