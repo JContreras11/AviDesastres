@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,10 @@ export function PersonaDialog({ id, onClose, onChanged }: { id: string; onClose:
   const [historial, setHistorial] = useState<any[]>([]);
   const [guardando, setGuardando] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Mueve el foco al cuerpo del diálogo cuando carga (teclado/lector de pantalla
+  // entran al modal, no quedan en la fila que lo abrió). Div, no input: en móvil no abre teclado.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (p || err) bodyRef.current?.focus(); }, [p, err]);
 
   useEffect(() => {
     let vivo = true;
@@ -77,14 +81,14 @@ export function PersonaDialog({ id, onClose, onChanged }: { id: string; onClose:
       <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-lg">
         <DialogHeader><DialogTitle className="text-xl pr-8">{p?.nombre ?? (err ? "Error" : "Cargando…")}</DialogTitle></DialogHeader>
         {err && (
-          <div className="py-6 text-center text-sm text-muted-foreground">
+          <div ref={bodyRef} tabIndex={-1} className="py-6 text-center text-sm text-muted-foreground outline-none">
             <p className="mb-3">⚠️ {err}</p>
             <Button variant="outline" size="lg" onClick={onClose}>Cerrar</Button>
           </div>
         )}
         {!p && !err && <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Cargando…</div>}
         {p && (
-          <div className="flex flex-col gap-3">
+          <div ref={bodyRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
             {p.fotos?.length > 0 && (
               <div className="flex gap-2 overflow-auto pb-1">
                 {p.fotos.map((f: string) => <Img key={f} src={f} className="h-28 rounded-xl object-cover cursor-zoom-in shrink-0" />)}
