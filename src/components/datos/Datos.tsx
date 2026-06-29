@@ -73,7 +73,7 @@ export function Datos({ counts }: { counts: Counts }) {
     { accessorKey: "nombre", header: "Nombre", cell: (c) => <span className="font-medium">{c.getValue() as string}</span> },
     { id: "cedula", sortKey: "cedula", header: "Cédula", accessorFn: (r) => cedulaReal(r.cedula) ?? "", cell: (c) => dash(c.getValue()) },
     { accessorKey: "edad", header: "Edad", cell: (c) => dash(c.getValue()) },
-    { accessorKey: "sexo", header: "Sexo", cell: (c) => dash(c.getValue()) },
+    { accessorKey: "sexo", header: "Sexo", cell: (c) => { const v = c.getValue(); return v === "M" ? "M" : v === "F" ? "F" : dash(""); } },
     { accessorKey: "estado_salud", header: "Estado", cell: (c) => <Pill v={c.getValue() as string} /> },
     { id: "zona", sortKey: "ubicacion", header: "Procedencia", accessorFn: (r) => r.ubicacion ?? "",
       cell: (c) => c.getValue() ? <span className="font-medium whitespace-nowrap">📍 {c.getValue() as string}</span> : dash("") },
@@ -167,7 +167,7 @@ export function Datos({ counts }: { counts: Counts }) {
             <DataTable columns={colPersonas} data={personasQ.data?.rows ?? []} placeholder="Buscar persona, cédula, zona…"
               facets={[
                 { columnId: "estado_salud", label: "Estado", options: ["vivo", "herido", "desaparecido", "fallecido", "desconocido"] },
-                { columnId: "sexo", label: "Sexo", options: ["M", "F", "O", "desconocido"] },
+                { columnId: "sexo", label: "Sexo", options: ["M", "F"] },
               ]}
               onRowClick={(r) => setSel({ tipo: "persona", data: r })} onExport={() => {}} server={personasServer} />
           </TabsContent>
