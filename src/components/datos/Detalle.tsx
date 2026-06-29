@@ -56,10 +56,13 @@ export function PersonaDialog({ id, onClose, onChanged }: { id: string; onClose:
   }, [id]);
 
   async function guardar() {
+    if (!p?.nombre?.trim()) { toast.error("El nombre es obligatorio."); return; }
     setGuardando(true);
     const r = await actualizarPersona(id, p);
     setGuardando(false);
-    if (r.ok) { toast.success("Persona actualizada"); onChanged(); onClose(); } else toast.error((r as any).error);
+    // En error: NO cerramos ni reseteamos `p` — los cambios del usuario quedan intactos para reintentar.
+    if (r.ok) { toast.success("Persona actualizada"); onChanged(); onClose(); }
+    else toast.error((r as any).error ?? "No se pudo guardar. Inténtalo de nuevo.");
   }
   async function borrar() {
     if (!confirm("¿Eliminar esta persona?")) return;
