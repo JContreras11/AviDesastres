@@ -23,9 +23,9 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  // Rutas públicas (sin login): entrada abierta para los 28M — home, chat, desaparecidos,
-  // refugios, difusión (compartir) y ofertas. El chat es la entrada pública principal.
-  const PUB = ["/", "/login", "/chat", "/desaparecidos", "/refugios", "/api/chat", "/api/audio"];
+  // Rutas públicas (sin login): el anónimo SOLO chatea con Avi, ve qué insumos faltan
+  // y dona. Todo lo demás (desaparecidos, refugios, panel, etc.) exige iniciar sesión.
+  const PUB = ["/", "/login", "/chat", "/api/chat", "/api/audio"];
   const esPublica = PUB.includes(path) || path.startsWith("/compartir") || path.startsWith("/ofrecer");
   if (!user && !esPublica) {
     const url = request.nextUrl.clone();

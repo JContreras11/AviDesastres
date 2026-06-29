@@ -4,13 +4,17 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { ChatPanel } from "@/components/ChatPanel";
 import { Logo } from "@/components/Brand";
+import { useRol } from "@/lib/rol";
 
 // Burbuja flotante bottom-right que despliega el chat. Misma conversación que /chat.
 // Oculto en la propia página /chat (ahí se ve completo) y en login/print.
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const path = usePathname();
+  const { email } = useRol();
   if (path === "/chat" || path === "/login" || path.startsWith("/print")) return null;
+  // En el home de un visitante anónimo el chat ya va embebido (LandingPublico): sin burbuja.
+  if (path === "/" && !email) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2 print:hidden">
