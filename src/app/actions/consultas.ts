@@ -12,10 +12,15 @@ import { lugaresEntrega } from "@/app/actions/donaciones";
 // voluntario / personal de centro: solo lo de SUS instituciones + necesidades públicas.
 // publico / anónimo: solo info pública (ubicación, necesidades, desaparecidos).
 
-type Filtro = { nombre?: string; ubicacion?: string; id?: string; estado?: string };
-export type Entidad = "hospital" | "insumo" | "centro" | "persona";
+type Filtro = { nombre?: string; ubicacion?: string; id?: string; estado?: string; hospital?: string };
+export type Entidad = "hospital" | "refugio" | "insumo" | "centro" | "persona";
 
 const like = (v?: string) => `%${(v ?? "").trim()}%`;
+// Enlace de "cómo llegar" (desde la ubicación del usuario) a un lugar con o sin gps.
+const comoLlegar = (r: any) =>
+  r.gps_lat != null && r.gps_lng != null
+    ? `https://www.google.com/maps/dir/?api=1&destination=${r.gps_lat},${r.gps_lng}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${r.nombre ?? ""} ${r.ubicacion ?? r.zona ?? ""} Venezuela`)}`;
 
 export async function consultarEntidad(entidad: Entidad, filtro: Filtro = {}) {
   const s = await getSesion();
@@ -68,10 +73,30 @@ export async function consultarEntidad(entidad: Entidad, filtro: Filtro = {}) {
   }
 
   if (entidad === "centro") {
-    let q = a.from("centros_acopio").select("nombre,zona,ubicacion,horario,recibe,necesita,contacto_nombre,contacto_telefono,activo").limit(20);
+    let q = a.from("centros_acopio").select("nombre,zona,ubicacion,horario,recibe,necesita,contacto_nombre,contacto_telefono,activo,gps_lat,gps_lng").limit(20);
     if (filtro.nombre) q = q.ilike("nombre", like(filtro.nombre));
     const { data } = await q;
-    return { entidad, rol, rows: data ?? [] };
+    return { entidad, rol, rows: (data ?? []).map((x: any) => ({ ...x, como_llegar: comoLlegar(x) })) };
+  }
+
+  if (entidad === "refugio") {
+    // ¿Refugios CERCANOS a un hospital? -> usa la relación por cercanía (hospital_refugio) + centros.
+    if (filtro.hospital) {
+      const { data: h } = await a.from("hospitales").select("id,nombre,ubicacion").neq("tipo", "refugio").ilike("nombre", like(filtro.hospital)).limit(1).maybeSingle();
+      if (h) {
+        const lugares = await lugaresEntrega(h.id);
+        return {
+          entidad, rol, hospital: h.nombre,
+          rows: lugares.map((x: any) => ({ nombre: x.nombre, tipo: x.tipo, ubicacion: x.ubicacion ?? x.zona ?? null, como_llegar: comoLlegar(x) })),
+        };
+      }
+    }
+    // Lista / búsqueda de refugios.
+    let q = a.from("hospitales").select("id,nombre,ubicacion,gps_lat,gps_lng").eq("tipo", "refugio").limit(20);
+    if (filtro.nombre) q = q.ilike("nombre", like(filtro.nombre));
+    if (filtro.ubicacion) q = q.ilike("ubicacion", like(filtro.ubicacion));
+    const { data } = await q;
+    return { entidad, rol, rows: (data ?? []).map((x: any) => ({ nombre: x.nombre, ubicacion: x.ubicacion, como_llegar: comoLlegar(x) })) };
   }
 
   // persona

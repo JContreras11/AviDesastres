@@ -29,7 +29,7 @@ const GUIA = `GUÍA DE AVIHELP (úsala para explicar cómo usar la plataforma; l
 - DONAR A UNA NECESIDAD PUNTUAL (ONG/centro con cuenta): en Inicio, pestaña "Insumos", abre el insumo y usa "Donar (en camino)"; indica la cantidad y se concilia con lo pendiente.
 - VER NECESIDADES: en Inicio, pestaña "Insumos" están los insumos que piden los hospitales. Cada hospital tiene una página para difundir con QR en /compartir/hospital/ID.
 - BUSCAR PERSONA: pregúntame el nombre o la cédula; también /desaparecidos lista a los reportados como desaparecidos.
-- REFUGIOS: /refugios. PANEL de situación: /dashboard.
+- REFUGIOS: puedes preguntarme por refugios (incl. "refugios cercanos a tal hospital") y te los LISTO aquí con su enlace para llegar; la página completa con mapa es /refugios. PANEL de situación: /dashboard.
 - PERSONAL DE CENTRO DE SALUD: abre un insumo y actualiza su estatus (Pendiente → En tránsito → Recibido).
 - COORDINADOR / personal que gestiona donaciones: la bandeja de emparejamientos sugeridos por IA está en /admin/triage; ahí aprueba o rechaza.
 Cuando expliques cómo hacer algo, da pasos cortos e incluye el enlace interno (ej. /ofrecer).`;
@@ -60,10 +60,11 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
         role: "system",
         content:
           "Clasifica la pregunta del usuario en una emergencia humanitaria. Responde SOLO JSON: " +
-          '{"tipo":"datos|ayuda","entidad":"hospital|insumo|centro|persona|null","nombre":string|null,"ubicacion":string|null,"estado":"vivo|herido|desaparecido|fallecido"|null}. ' +
-          '"datos" = pide información concreta (quién es el responsable, dónde queda, qué insumos faltan, buscar a una persona, datos de un hospital/centro). ' +
-          '"ayuda" = cómo USAR la plataforma (cómo donar, cómo reportar, dónde hacer algo). ' +
-          "entidad: hospital (centro de salud/clínica/refugio: responsable, ubicación, necesidades), insumo (qué falta/necesidades), centro (centro de acopio), persona (buscar a alguien). nombre = nombre del hospital/centro/persona mencionado.",
+          '{"tipo":"datos|ayuda","entidad":"hospital|refugio|insumo|centro|persona|null","nombre":string|null,"ubicacion":string|null,"hospital":string|null,"estado":"vivo|herido|desaparecido|fallecido"|null}. ' +
+          '"datos" = pide información concreta (refugios cercanos, quién es el responsable, dónde queda, qué insumos faltan, buscar a una persona). ' +
+          '"ayuda" = cómo USAR la plataforma (cómo donar, cómo reportar). ' +
+          "entidad: hospital (centro de salud/clínica: responsable/ubicación), refugio (refugios/albergues y refugios CERCANOS a un hospital), insumo (qué falta), centro (centro de acopio), persona (buscar a alguien). " +
+          'nombre = nombre del refugio/centro/persona. hospital = nombre del hospital/clínica mencionado (p. ej. "refugios cerca del hospital Razetti" -> entidad="refugio", hospital="Razetti").',
       },
       { role: "user", content: pregunta },
     ],
@@ -79,7 +80,7 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
   let datos: any = null;
   let externo: { resultados: any[]; enlaces: { titulo: string; url: string }[] } = { resultados: [], enlaces: [] };
   if (filtros.tipo === "datos" && filtros.entidad && filtros.entidad !== "null") {
-    datos = await consultarEntidad(filtros.entidad, { nombre: filtros.nombre, ubicacion: filtros.ubicacion, estado: filtros.estado });
+    datos = await consultarEntidad(filtros.entidad, { nombre: filtros.nombre, ubicacion: filtros.ubicacion, estado: filtros.estado, hospital: filtros.hospital });
     // Persona sin resultado local -> fuentes externas en vivo + enlaces clicables.
     if (filtros.entidad === "persona" && (datos?.rows?.length ?? 0) === 0) {
       externo = await buscarExterno(filtros.nombre || pregunta);
@@ -107,6 +108,7 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
           "(B) DATOS (qué falta, quién es responsable, dónde queda, buscar persona) → usa SOLO los datos provistos; da nombres, estado, ubicación, teléfono cuando existan; NO inventes. " +
           "RESPETA EL ROL: si un dato trae 'acceso: RESTRINGIDO' o una 'nota' de restricción, NO reveles ese dato; en su lugar da lo que SÍ se puede ver (p. ej. la ubicación) y, si el usuario es público/anónimo, sugiérele iniciar sesión si es personal autorizado. " +
           "Si buscas una persona y no hay datos locales pero sí externos, preséntalos indicando la fuente e invita a confirmar; escribe los 'Enlaces' como URLs completas al final. " +
+          "REFUGIOS/CENTROS: si te doy una lista de refugios o centros (incl. 'refugios cercanos'), enuméralos AQUÍ con su nombre y ubicación, y para cada uno incluye su enlace 'como_llegar' como URL completa (https://…) para que llegue desde su ubicación. NUNCA redirijas a /refugios para esto. " +
           "Si de verdad no hay nada, dilo claro y ofrece una alternativa concreta.\n\n" + GUIA,
       },
       { role: "user", content:
