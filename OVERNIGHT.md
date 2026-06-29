@@ -98,3 +98,9 @@ Orden: F2 (core) → F3 → F1. Cada una: rama propia o commits chicos en auto/o
 
 ## Integración (heartbeat)
 - build COMBINADO F1+F2+F3 en auto/overnight = VERDE. Las 3 features apilan limpio. Listo para merge.
+
+## Testing comprehensivo (e2e)
+- `e2e/tests/crud-roles.spec.ts` (nuevo, gitignored): 18 tests módulo×CRUD×rol contra DEV. **18/18 PASS, 0 flaky, 0 bugs de app.** Auto-siembra+limpia.
+- Cobertura: admin (crear/editar/eliminar usuario, editar persona/insumo con persistencia, tracking/cubrir, 4 paneles); medico/voluntario (tracking + /admin/* redirige + triage por membresía); ong (solo-lectura, sin tracking/editar); publico (rutas públicas sin login, /dashboard+/admin redirigen).
+- Correr: `cd e2e && BASE_URL=https://avihelp-git-dev-0cools-projects.vercel.app pnpm crud`.
+- Permisos verificados correctos en UI + redirects server-side + server actions. Nota diseño: /admin/triage NO es solo-admin (membresía de hospital también entra) — por diseño.
