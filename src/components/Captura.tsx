@@ -18,7 +18,7 @@ import { DocCard } from "./captura/DocCard";
 
 const CONCURRENCIA = 2;
 
-export function Captura() {
+export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
   const { puede } = useRol();
   const qc = useQueryClient();
   const refrescar = () => {
@@ -42,6 +42,14 @@ export function Captura() {
 
   // Lista de instituciones existentes para emparejar (evita duplicados al guardar).
   useEffect(() => { listarHospitalesSelect().then(setHospitales).catch(() => {}); }, []);
+
+  // Archivos arrastrados/soltados en el chat de Avi entran al MISMO pipeline.
+  useEffect(() => {
+    const h = (e: Event) => { const fs = (e as CustomEvent).detail as File[]; if (fs?.length) agregarArchivos(fs); };
+    window.addEventListener("avi-cargar", h);
+    return () => window.removeEventListener("avi-cargar", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -227,6 +235,7 @@ export function Captura() {
       <input ref={camRef} type="file" accept="image/*" capture="environment" hidden
         onChange={(e) => { if (e.target.files?.length) agregarArchivos(e.target.files); e.target.value = ""; }} />
 
+      {!soloCola && (<>
       {/* Invitación a Avi: para consultar/buscar, mejor el chat. */}
       <div className="max-w-2xl mx-auto w-full rounded-2xl border bg-gradient-to-r from-primary/10 to-transparent p-3 flex items-center gap-3">
         <span className="text-2xl shrink-0">💬</span>
@@ -294,6 +303,7 @@ export function Captura() {
           </TabsContent>
         </Tabs>
       </div>
+      </>)}
 
       {/* COLA: feedback inmediato JUSTO debajo de la subida. Masonry: 1 col móvil, 2-3 en PC. */}
       {items.length > 0 && (

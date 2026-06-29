@@ -4,7 +4,7 @@ import { Datos } from "@/components/datos/Datos";
 import { HomeCards } from "@/components/HomeCards";
 import { Bienvenida } from "@/components/Bienvenida";
 import { LandingPublico } from "@/components/LandingPublico";
-import { Logo } from "@/components/Brand";
+import { ChatHero } from "@/components/ChatHero";
 import { getSesion, createAdminClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -28,17 +28,12 @@ export default async function Home() {
   return (
     <main className="flex-1 px-4 py-10 sm:py-14 bg-gradient-to-b from-primary/5 via-background to-background">
       <Bienvenida />
-      <div className="max-w-2xl mx-auto text-center mb-10 flex flex-col items-center">
-        <Logo size={88} />
-        <h1 className="mt-4 text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-[#5eead4] bg-clip-text text-transparent">
-          Soy Avi
-        </h1>
-        <p className="text-muted-foreground mt-2 max-w-md">
-          Consulta las necesidades de hospitales, insumos y centros de acopio en la emergencia.
-        </p>
-      </div>
 
-      <Captura />
+      {/* Una sola UI: el chat de Avi (con adjuntar/arrastrar archivos y voz para staff). */}
+      <ChatHero />
+
+      {/* Previews de lo que se cargó por el chat (solo aparecen al subir algo). */}
+      <div className="mt-6"><Captura soloCola /></div>
 
       <HomeCards counts={counts} />
 

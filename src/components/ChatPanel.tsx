@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, Square } from "lucide-react";
+import { Mic, Square, Paperclip } from "lucide-react";
+import { toast } from "sonner";
 import { useChat } from "@/lib/chat-store";
+import { useRol } from "@/lib/rol";
 
 // URLs externas (https) abren en pestaña nueva; rutas internas (/ofrecer, /compartir…) navegan en la misma app.
 function conLinks(texto: string) {
@@ -38,11 +40,26 @@ function renderRich(texto: string) {
   return <div className="flex flex-col gap-1">{out}</div>;
 }
 
+// Cargar archivos por el chat (logueado con permiso): se manda al pipeline de Captura
+// vía evento global; Captura los analiza y muestra el preview editable.
+function emitirArchivos(files: FileList | File[]) {
+  window.dispatchEvent(new CustomEvent("avi-cargar", { detail: Array.from(files) }));
+}
+
 // Panel de chat reutilizable: misma conversación en la página /chat y en el widget.
 export function ChatPanel({ className = "" }: { className?: string }) {
   const { msgs, cargando, grabando, enviar, toggleMic, nudge } = useChat();
+  const { puede } = useRol();
+  const subir = puede("cargar"); // staff verificado: puede arrastrar imágenes/documentos a Avi
   const [input, setInput] = useState("");
+  const [drag, setDrag] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function soltar(e: React.DragEvent) {
+    e.preventDefault(); setDrag(false);
+    if (subir && e.dataTransfer.files?.length) { emitirArchivos(e.dataTransfer.files); toast.success("Archivo recibido — Avi lo está leyendo abajo."); }
+  }
 
   // Auto-scroll al último mensaje.
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs, cargando]);
@@ -62,7 +79,15 @@ export function ChatPanel({ className = "" }: { className?: string }) {
   }
 
   return (
-    <div className={`flex flex-col min-h-0 ${className}`}>
+    <div className={`relative flex flex-col min-h-0 ${className}`}
+      onDragOver={(e) => { if (subir) { e.preventDefault(); setDrag(true); } }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={soltar}>
+      {subir && drag && (
+        <div className="absolute inset-0 z-10 grid place-items-center rounded-2xl bg-primary/10 border-2 border-dashed border-primary pointer-events-none">
+          <p className="text-primary font-semibold">📎 Suelta para que Avi lo lea</p>
+        </div>
+      )}
       <div className="flex-1 min-h-0 overflow-auto p-3 flex flex-col gap-2">
         {msgs.map((m, i) => (
           <div key={i} className={m.rol === "user" ? "self-end max-w-[85%]" : "self-start max-w-[85%]"}>
@@ -75,6 +100,18 @@ export function ChatPanel({ className = "" }: { className?: string }) {
         <div ref={finRef} />
       </div>
       <form onSubmit={submit} className="flex items-center gap-2 p-2 border-t bg-background">
+        {/* Adjuntar archivo (solo staff con permiso): imágenes/PDF/Excel/Word → Avi los procesa. */}
+        {subir && (
+          <>
+            <input ref={fileRef} type="file" multiple hidden
+              accept="image/*,application/pdf,.pdf,.xlsx,.xls,.csv,.docx"
+              onChange={(e) => { if (e.target.files?.length) { emitirArchivos(e.target.files); toast.success("Archivo recibido — Avi lo está leyendo abajo."); } e.target.value = ""; }} />
+            <button type="button" onClick={() => fileRef.current?.click()} title="Adjuntar archivo" aria-label="Adjuntar archivo"
+              className="shrink-0 grid place-items-center size-11 rounded-full border text-muted-foreground hover:bg-muted active:scale-95 transition">
+              <Paperclip className="size-5" />
+            </button>
+          </>
+        )}
         {/* Micrófono: gradiente animado + glow; al grabar, ondas rojas. */}
         <button type="button" onClick={() => toggleMic((t) => enviar(t))}
           title="Habla con Avi" aria-label="Habla con Avi"
