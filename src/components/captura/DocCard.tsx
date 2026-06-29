@@ -89,7 +89,7 @@ export function DocCard({
             <Button type="button" size="sm" variant="outline" onClick={onReintentar}>↻ Reintentar</Button>
           )}
           {item.estado !== "guardado" && (
-            <button type="button" onClick={onDescartar} title="Quitar"
+            <button type="button" onClick={onDescartar} title="Quitar" aria-label="Quitar de la cola"
               className="size-8 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition">✕</button>
           )}
         </div>
