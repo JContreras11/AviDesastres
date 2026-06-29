@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import { createAdminClient } from "@/lib/supabase/server";
 import { transcribirAudio } from "@/lib/ai/vision";
 import { buscarExterno } from "@/app/actions/externos";
+import { consultarEntidad } from "@/app/actions/consultas";
 
 // Transcribe audio del micrófono a texto (para hablarle al chat).
 export async function transcribirVoz(formData: FormData): Promise<string> {
@@ -44,9 +45,11 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
       {
         role: "system",
         content:
-          "Extrae filtros de búsqueda de la pregunta del usuario sobre una base de personas e insumos en una emergencia. " +
-          'Responde SOLO JSON: {"entidad":"personas|insumos","nombre":string|null,"ubicacion":string|null,' +
-          '"estado":"vivo|herido|desaparecido|fallecido"|null,"insumo":string|null}',
+          "Clasifica la pregunta del usuario en una emergencia humanitaria. Responde SOLO JSON: " +
+          '{"tipo":"datos|ayuda","entidad":"hospital|insumo|centro|persona|null","nombre":string|null,"ubicacion":string|null,"estado":"vivo|herido|desaparecido|fallecido"|null}. ' +
+          '"datos" = pide información concreta (quién es el responsable, dónde queda, qué insumos faltan, buscar a una persona, datos de un hospital/centro). ' +
+          '"ayuda" = cómo USAR la plataforma (cómo donar, cómo reportar, dónde hacer algo). ' +
+          "entidad: hospital (centro de salud/clínica/refugio: responsable, ubicación, necesidades), insumo (qué falta/necesidades), centro (centro de acopio), persona (buscar a alguien). nombre = nombre del hospital/centro/persona mencionado.",
       },
       { role: "user", content: pregunta },
     ],
@@ -56,35 +59,25 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
   let filtros: any = {};
   try { filtros = JSON.parse(f.choices[0]?.message?.content ?? "{}"); } catch {}
 
-  // 2) Consultar la base.
+  // 2) Consultar la base CON SCOPE POR ROL (tool de consulta de entidad).
+  //    consultarEntidad decide qué campos puede ver el usuario según su rol.
   const supabase = createAdminClient();
-  let fuentes: any[] = [];
-  if (filtros.entidad === "insumos") {
-    let q = supabase.from("insumos").select("*, hospitales(nombre)").limit(15);
-    if (filtros.insumo) q = q.ilike("nombre", `%${filtros.insumo}%`);
-    fuentes = (await q).data ?? [];
-  } else {
-    let q = supabase.from("personas").select("nombre,cedula,edad,sexo,ubicacion,estado_salud,descripcion_fisica,telefono_contacto,notas").limit(15);
-    if (filtros.nombre) q = q.ilike("nombre", `%${filtros.nombre}%`);
-    if (filtros.ubicacion) q = q.ilike("ubicacion", `%${filtros.ubicacion}%`);
-    if (filtros.estado) q = q.eq("estado_salud", filtros.estado);
-    fuentes = (await q).data ?? [];
+  let datos: any = null;
+  let externo: { resultados: any[]; enlaces: { titulo: string; url: string }[] } = { resultados: [], enlaces: [] };
+  if (filtros.tipo === "datos" && filtros.entidad && filtros.entidad !== "null") {
+    datos = await consultarEntidad(filtros.entidad, { nombre: filtros.nombre, ubicacion: filtros.ubicacion, estado: filtros.estado });
+    // Persona sin resultado local -> fuentes externas en vivo + enlaces clicables.
+    if (filtros.entidad === "persona" && (datos?.rows?.length ?? 0) === 0) {
+      externo = await buscarExterno(filtros.nombre || pregunta);
+    }
   }
 
-  // 2b) Búsqueda de texto completo sobre TODO lo ingresado (personas, insumos,
-  // hospitales, notas/texto libre) — encuentra lo que el filtro estructurado no.
+  // 2b) Búsqueda de texto completo (contexto extra de lo ya ingresado).
   let docs: any[] = [];
   try {
     const { data } = await supabase.rpc("buscar_documentos", { q: pregunta, match_count: 10 });
     docs = data ?? [];
   } catch {}
-
-  // 2c) Si buscan una PERSONA y no la tenemos local -> consultar fuentes externas en vivo
-  // (hospitales públicos / desaparecidos) y ofrecer enlaces de referencia clicables.
-  let externo: { resultados: any[]; enlaces: { titulo: string; url: string }[] } = { resultados: [], enlaces: [] };
-  if (filtros.entidad !== "insumos" && fuentes.length === 0) {
-    externo = await buscarExterno(filtros.nombre || pregunta);
-  }
 
   // 3) Redactar respuesta con el contexto recuperado.
   const r = await client.chat.completions.create({
@@ -94,17 +87,19 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
         role: "system",
         content:
           "Eres Avi, la asistente de AviHelp en una emergencia humanitaria. Cálida pero concisa. Responde en español. " +
-          "DOS tipos de pregunta: (A) CÓMO USAR la plataforma (donar, ofrecer, reportar, compartir, dónde hacer algo) → respóndela con la GUÍA: pasos cortos e incluye el enlace interno (ej. /ofrecer) tal cual para que el usuario haga clic. " +
-          "(B) DATOS de personas/insumos → usa SOLO los registros/textos/fuentes provistos; incluye estado, ubicación y teléfono si existen; NO inventes datos. " +
-          "Si buscan una persona y no hay registros locales pero sí externos, preséntalos indicando la fuente e invita a confirmar; escribe los 'Enlaces' como URLs completas al final. " +
-          "Si es duda de uso y no aplica buscar datos, ignora que los registros estén vacíos y guía con la GUÍA.\n\n" + GUIA,
+          "REGLA CLAVE: responde SIEMPRE con la información que te doy aquí. NUNCA digas que vayan a otra página, pestaña o sección para verla — si tengo los datos, dáselos directo en el chat. " +
+          "(A) CÓMO USAR la plataforma (cómo donar/ofrecer/reportar) → guía con la GUÍA: pasos cortos + enlace interno (ej. /ofrecer) tal cual para clic. " +
+          "(B) DATOS (qué falta, quién es responsable, dónde queda, buscar persona) → usa SOLO los datos provistos; da nombres, estado, ubicación, teléfono cuando existan; NO inventes. " +
+          "RESPETA EL ROL: si un dato trae 'acceso: RESTRINGIDO' o una 'nota' de restricción, NO reveles ese dato; en su lugar da lo que SÍ se puede ver (p. ej. la ubicación) y, si el usuario es público/anónimo, sugiérele iniciar sesión si es personal autorizado. " +
+          "Si buscas una persona y no hay datos locales pero sí externos, preséntalos indicando la fuente e invita a confirmar; escribe los 'Enlaces' como URLs completas al final. " +
+          "Si de verdad no hay nada, dilo claro y ofrece una alternativa concreta.\n\n" + GUIA,
       },
       { role: "user", content:
-        `Pregunta: ${pregunta}\n\nRegistros locales (JSON):\n${JSON.stringify(fuentes)}\n\nTextos relacionados:\n${docs.map((d) => `- ${d.contenido}`).join("\n")}` +
+        `Pregunta: ${pregunta}\n\nDatos consultados (con scope por rol):\n${JSON.stringify(datos)}\n\nTextos relacionados:\n${docs.map((d) => `- ${d.contenido}`).join("\n")}` +
         `\n\nResultados de fuentes externas (JSON):\n${JSON.stringify(externo.resultados)}\n\nEnlaces de referencia:\n${externo.enlaces.map((e) => `- ${e.titulo}: ${e.url}`).join("\n")}` },
     ],
     temperature: 0.2,
   });
 
-  return { respuesta: r.choices[0]?.message?.content ?? "Sin respuesta.", fuentes, externos: externo.resultados, enlaces: externo.enlaces };
+  return { respuesta: r.choices[0]?.message?.content ?? "Sin respuesta.", fuentes: datos?.rows ?? [], externos: externo.resultados, enlaces: externo.enlaces };
 }
