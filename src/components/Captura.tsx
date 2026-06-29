@@ -31,6 +31,7 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
   const [grabando, setGrabando] = useState(false);
   const [segs, setSegs] = useState(0);
   const [drag, setDrag] = useState(false);
+  const [guardandoTodo, setGuardandoTodo] = useState(false);
   const [texto, setTexto] = useState("");
   const [urlIn, setUrlIn] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -184,14 +185,20 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
         confianza: it.confianza, modelo: it.modelo ?? "", notas: it.notas,
       });
       if (res.ok) { upd(it.id, { estado: "guardado" }); toast.success(res.resumen); refrescar(); }
-      else upd(it.id, { estado: "listo", error: res.error });
+      // En error: vuelve a "listo" conservando lo cargado y AVISA (antes fallaba en silencio).
+      else { upd(it.id, { estado: "listo", error: res.error }); toast.error(res.error ?? "No se pudo guardar. Inténtalo de nuevo."); }
     } catch (e: any) {
       upd(it.id, { estado: "listo", error: e?.message });
+      toast.error(e?.message ?? "No se pudo guardar. Revisa tu conexión.");
     }
   }
 
+  // Guarda en serie; bloquea el botón para no duplicar y evita perder lo no guardado.
   async function guardarTodo() {
-    for (const it of items.filter((x) => x.estado === "listo")) await guardar(it);
+    if (guardandoTodo) return;
+    setGuardandoTodo(true);
+    try { for (const it of items.filter((x) => x.estado === "listo")) await guardar(it); }
+    finally { setGuardandoTodo(false); }
   }
 
   // Micrófono: graba audio real (MediaRecorder) y lo transcribe en el servidor.
@@ -316,7 +323,7 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
                 {grabando && <span className="absolute inset-0 rounded-full bg-red-400/50 animate-ping" />}
                 <span className="relative">{grabando ? "⏹️" : "🎙️"}</span>
               </button>
-              <span className="text-sm text-muted-foreground text-center">
+              <span className="text-sm text-muted-foreground text-center" aria-live="polite" role="status">
                 {grabando ? `🔴 Grabando ${Math.floor(segs / 60)}:${String(segs % 60).padStart(2, "0")} — toca para detener` : "Toca y dicta una lista o nota; la IA la transcribe y estructura."}
               </span>
             </div>
@@ -329,11 +336,11 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
       {items.length > 0 && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 text-sm">
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground" aria-live="polite" role="status">
               {pendientes > 0 ? `⏳ ${pendientes} procesando…` : "Listo para revisar"}
               {listos > 0 && ` · ${listos} por guardar`}
             </span>
-            {listos > 1 && <Button size="sm" onClick={guardarTodo}>Guardar todo ({listos})</Button>}
+            {listos > 1 && <Button size="sm" onClick={guardarTodo} disabled={guardandoTodo}>{guardandoTodo ? "Guardando…" : `Guardar todo (${listos})`}</Button>}
           </div>
           <div className="gap-3 columns-1 md:columns-2 xl:columns-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
             {items.map((it) => (
