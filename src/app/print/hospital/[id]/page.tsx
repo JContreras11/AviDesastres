@@ -10,15 +10,20 @@ const PRIO_ORD: Record<string, number> = { critica: 0, alta: 1, media: 2, baja: 
 export default async function PrintHospital({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const s = createAdminClient();
-  const [{ data: hospital }, { data: insumos }] = await Promise.all([
-    s.from("hospitales").select("*").eq("id", id).single(),
-    s.from("insumos").select("nombre,cantidad,unidad,presentacion,area,prioridad")
-      .eq("hospital_id", id).in("estado", ["solicitado", "en_transito"]),
-  ]);
+  // Data vacía / id inválido / error de red no deben romper la impresión.
+  let hospital: any = null;
+  let lista: any[] = [];
+  try {
+    const [h, ins] = await Promise.all([
+      s.from("hospitales").select("*").eq("id", id).single(),
+      s.from("insumos").select("nombre,cantidad,unidad,presentacion,area,prioridad")
+        .eq("hospital_id", id).in("estado", ["solicitado", "en_transito"]),
+    ]);
+    hospital = h.data;
+    lista = ins.data ?? [];
+  } catch { /* deja hospital=null -> mensaje "no encontrado" */ }
 
   if (!hospital) return <main className="p-8">Hospital no encontrado.</main>;
-
-  const lista = insumos ?? [];
   const porArea = lista.reduce((acc: Record<string, any[]>, i: any) => {
     (acc[i.area || "General"] ??= []).push(i); return acc;
   }, {});
@@ -41,10 +46,11 @@ export default async function PrintHospital({ params }: { params: Promise<{ id: 
         Object.entries(porArea).map(([area, items]) => (
           <section key={area} className="mb-4">
             <h2 className="text-base font-bold uppercase border-b border-gray-400 mb-1">{area}</h2>
+            <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left border-b border-gray-300">
-                  <th className="py-1 w-8">#</th><th>Insumo</th><th>Cant.</th><th>Tipo</th><th>Prioridad</th><th className="w-24">Recibido</th>
+                  <th scope="col" className="py-1 w-8">#</th><th scope="col">Insumo</th><th scope="col">Cant.</th><th scope="col">Tipo</th><th scope="col">Prioridad</th><th scope="col" className="w-24">Recibido</th>
                 </tr>
               </thead>
               <tbody>
@@ -62,6 +68,7 @@ export default async function PrintHospital({ params }: { params: Promise<{ id: 
                   ))}
               </tbody>
             </table>
+            </div>
           </section>
         ))
       )}
