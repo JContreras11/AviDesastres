@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { analizarImagen, analizarVoz, analizarAudio, guardarDocumento } from "@/app/actions/procesar";
 import { analizarPDF, analizarExcel, analizarDOCX, analizarURL, listarHospitalesSelect } from "@/app/actions/ingesta";
 import { decodeQR, tipoArchivo } from "@/lib/qr";
+import { pdfAPaginasPNG } from "@/lib/pdf-render";
 import { encolar } from "@/lib/offline";
 import { realzarImagen } from "@/lib/realce";
 import { useRol } from "@/lib/rol";
@@ -132,7 +133,19 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
     for (const f of arr) {
       const t = tipoArchivo(f.name, f.type);
       if (t === "foto") nuevos.push(await itemImagen(f));
-      else if (t === "pdf") nuevos.push({ id: crypto.randomUUID(), fuente: "pdf", nombre: `📕 ${f.name}`, estado: "pendiente", file: f, confianza: 0 });
+      else if (t === "pdf") {
+        // PDF -> PNG por página EN EL CLIENTE y se leen como imágenes (la visión funciona mejor
+        // que el texto colapsado). Fallback al parseo server-side si el render falla.
+        try {
+          const tid = toast.loading(`Convirtiendo ${f.name} a imágenes…`);
+          const paginas = await pdfAPaginasPNG(f);
+          toast.dismiss(tid);
+          if (!paginas.length) throw new Error("sin páginas");
+          for (const pg of paginas) nuevos.push(await itemImagen(pg));
+        } catch {
+          nuevos.push({ id: crypto.randomUUID(), fuente: "pdf", nombre: `📕 ${f.name}`, estado: "pendiente", file: f, confianza: 0 });
+        }
+      }
       else if (t === "excel") nuevos.push({ id: crypto.randomUUID(), fuente: "excel", nombre: `📊 ${f.name}`, estado: "pendiente", file: f, confianza: 0 });
       else if (t === "docx") nuevos.push({ id: crypto.randomUUID(), fuente: "docx", nombre: `📄 ${f.name}`, estado: "pendiente", file: f, confianza: 0 });
       else ignorados++;
