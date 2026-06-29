@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Mic, Square } from "lucide-react";
 import { useChat } from "@/lib/chat-store";
 
 // URLs externas (https) abren en pestaña nueva; rutas internas (/ofrecer, /compartir…) navegan en la misma app.
@@ -73,15 +74,42 @@ export function ChatPanel({ className = "" }: { className?: string }) {
         {cargando && <span className="self-start text-sm text-muted-foreground animate-pulse">escribiendo…</span>}
         <div ref={finRef} />
       </div>
-      <form onSubmit={submit} className="flex gap-2 p-2 border-t bg-background">
+      <form onSubmit={submit} className="flex items-center gap-2 p-2 border-t bg-background">
+        {/* Micrófono: gradiente animado + glow; al grabar, ondas rojas. */}
         <button type="button" onClick={() => toggleMic((t) => enviar(t))}
-          title="Hablar"
-          className={`shrink-0 size-10 rounded-full text-lg text-white transition ${grabando ? "bg-red-500 animate-pulse" : "bg-primary hover:opacity-90"}`}>
-          {grabando ? "⏹️" : "🎙️"}
+          title="Habla con Avi" aria-label="Habla con Avi"
+          className={`relative shrink-0 grid place-items-center size-11 rounded-full text-white overflow-visible active:scale-95
+            transition-[background-position,box-shadow,transform] duration-700 bg-[length:280%_auto] bg-gradient-to-tr
+            ${grabando
+              ? "from-rose-500 via-red-400 to-rose-500 shadow-[0_0_22px_rgba(244,63,94,0.6)]"
+              : "from-blue-600 via-sky-400 to-blue-600 hover:bg-right shadow-[0_0_18px_rgba(71,184,255,0.55)]"}`}>
+          {grabando ? (
+            <>
+              <span className="absolute inset-0 rounded-full bg-rose-400/50 animate-ping" />
+              <span className="absolute -inset-1.5 rounded-full border-2 border-rose-300/40 animate-pulse" />
+            </>
+          ) : (
+            <span className="absolute -inset-1 rounded-full bg-sky-400/20 animate-ping [animation-duration:3s]" />
+          )}
+          {grabando ? <Square className="relative size-4 fill-current" /> : <Mic className="relative size-5" />}
         </button>
-        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Escribe tu pregunta…"
-          className="flex-1 border rounded-lg px-3 text-base min-w-0" />
-        <button className="shrink-0 bg-primary text-primary-foreground rounded-lg px-4 text-sm font-medium disabled:opacity-50" disabled={cargando}>
+
+        {grabando ? (
+          <div className="flex-1 flex items-center gap-2 h-11 px-3 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900">
+            <span className="flex items-center gap-0.5">
+              <span className="w-1 h-2 rounded-full bg-rose-500 animate-bounce [animation-delay:0ms]" />
+              <span className="w-1 h-4 rounded-full bg-rose-500 animate-bounce [animation-delay:120ms]" />
+              <span className="w-1 h-3 rounded-full bg-rose-500 animate-bounce [animation-delay:240ms]" />
+              <span className="w-1 h-5 rounded-full bg-rose-500 animate-bounce [animation-delay:360ms]" />
+              <span className="w-1 h-2 rounded-full bg-rose-500 animate-bounce [animation-delay:180ms]" />
+            </span>
+            <span className="text-sm font-medium text-rose-600 dark:text-rose-300">Escuchando… toca para enviar</span>
+          </div>
+        ) : (
+          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Escribe o habla con Avi…"
+            className="flex-1 border rounded-lg px-3 h-11 text-base min-w-0" />
+        )}
+        <button className="shrink-0 bg-primary text-primary-foreground rounded-lg px-4 h-11 text-sm font-medium disabled:opacity-50" disabled={cargando || grabando}>
           Enviar
         </button>
       </form>
