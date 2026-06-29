@@ -15,18 +15,28 @@ export async function listarHospitalesSelect(): Promise<{ id: string; nombre: st
 // Nuevos formatos de carga (PDF, Excel, QR/URL). Cada uno EXTRAE texto y lo pasa
 // por el MISMO análisis IA + preview editable que foto/voz. No toca el flujo existente.
 const EXIF_VACIO = { gps_lat: null, gps_lng: null, foto_fecha: null };
-const CHUNK = 4000;     // chars/llamada (~100 filas): JSON chico que NO se trunca; los trozos van en paralelo
-const MAX_CHUNKS = 14;  // tope de seguridad (~56k chars)
+const CHUNK = 3500;     // chars/llamada: JSON chico que NO se trunca; los trozos van en paralelo
+const MAX_CHUNKS = 16;  // tope de seguridad (~56k chars)
 
-// Trocea por líneas sin partir filas, respetando el límite de chars por trozo.
+// Trocea por LONGITUD de caracteres (no por líneas): unpdf suele devolver el texto
+// sin saltos de línea, así que partir por "\n" dejaba un único trozo gigante que se
+// cortaba. Corta cerca de un salto/espacio para no romper a media palabra/fila.
 function trozos(texto: string): string[] {
   const out: string[] = [];
-  let cur = "";
-  for (const ln of texto.split(/\r?\n/)) {
-    if (cur && cur.length + ln.length + 1 > CHUNK) { out.push(cur); cur = ""; }
-    cur += (cur ? "\n" : "") + ln;
+  const n = texto.length;
+  let i = 0;
+  while (i < n) {
+    let end = Math.min(i + CHUNK, n);
+    if (end < n) {
+      const ventana = texto.slice(i, end);
+      const nl = ventana.lastIndexOf("\n");
+      const sp = ventana.lastIndexOf(" ");
+      const corte = nl > CHUNK * 0.6 ? nl : sp > CHUNK * 0.6 ? sp : ventana.length;
+      end = i + corte;
+    }
+    out.push(texto.slice(i, end));
+    i = end;
   }
-  if (cur.trim()) out.push(cur);
   return out.length ? out : [texto];
 }
 
