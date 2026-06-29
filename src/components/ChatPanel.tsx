@@ -5,6 +5,7 @@ import { Mic, Square, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import { useChat } from "@/lib/chat-store";
 import { useRol } from "@/lib/rol";
+import { DonarBoton, presentacionDe } from "@/components/DonarInsumo";
 
 // URLs externas (https) abren en pestaña nueva; rutas internas (/ofrecer, /compartir…) navegan en la misma app.
 function conLinks(texto: string) {
@@ -93,10 +94,27 @@ export function ChatPanel({ className = "" }: { className?: string }) {
       )}
       <div ref={listaRef} className="flex-1 min-h-0 overflow-auto p-3 flex flex-col gap-2">
         {msgs.map((m, i) => (
-          <div key={i} className={m.rol === "user" ? "self-end max-w-[85%]" : "self-start max-w-[85%]"}>
+          <div key={i} className={m.rol === "user" ? "self-end max-w-[85%]" : "self-start max-w-[90%]"}>
             <span className={`inline-block px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${m.rol === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
               {m.rol === "user" ? m.texto : renderRich(m.texto)}
             </span>
+            {/* Insumos donables: botón Donar directo en el chat. */}
+            {m.rol === "bot" && m.insumos && (
+              <div className="mt-2 flex flex-col gap-2">
+                {m.insumos.map((it: any) => (
+                  <div key={it.id} className="rounded-xl border bg-card p-2.5 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold capitalize text-sm leading-tight">{it.nombre}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {it.cantidad ?? "—"}{presentacionDe(it) ? ` ${presentacionDe(it)}` : ""}
+                        {it.hospitales?.nombre ? ` · 🏥 ${it.hospitales.nombre}` : ""}
+                      </p>
+                    </div>
+                    <DonarBoton insumo={it} className="shrink-0 !h-9 !px-3 !text-sm" />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         {cargando && <span className="self-start text-sm text-muted-foreground animate-pulse">escribiendo…</span>}

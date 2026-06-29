@@ -35,7 +35,7 @@ const GUIA = `GUÍA DE AVIHELP (úsala para explicar cómo usar la plataforma; l
 Cuando expliques cómo hacer algo, da pasos cortos e incluye el enlace interno (ej. /ofrecer).`;
 
 // Chatbot RAG sobre datos estructurados: parsea -> consulta Postgres -> redacta.
-export async function preguntar(pregunta: string): Promise<{ respuesta: string; fuentes: any[]; externos?: any[]; enlaces?: { titulo: string; url: string }[] }> {
+export async function preguntar(pregunta: string): Promise<{ respuesta: string; fuentes: any[]; externos?: any[]; enlaces?: { titulo: string; url: string }[]; insumos?: any[] }> {
   if (!pregunta?.trim()) return { respuesta: "Hazme una pregunta.", fuentes: [] };
 
   // Contexto del usuario para que Avi hable mejor y tenga claros sus permisos.
@@ -118,5 +118,7 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
     temperature: 0.2,
   });
 
-  return { respuesta: r.choices[0]?.message?.content ?? "Sin respuesta.", fuentes: datos?.rows ?? [], externos: externo.resultados, enlaces: externo.enlaces };
+  // Si Avi habló de insumos, devolvemos los donables para mostrar el botón "Donar" en el chat.
+  const insumos = filtros.entidad === "insumo" ? (datos?.rows ?? []).filter((x: any) => x?.id && x?.hospital_id) : [];
+  return { respuesta: r.choices[0]?.message?.content ?? "Sin respuesta.", fuentes: datos?.rows ?? [], externos: externo.resultados, enlaces: externo.enlaces, insumos };
 }

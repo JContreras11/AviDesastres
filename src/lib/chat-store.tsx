@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { preguntar, transcribirVoz } from "@/app/actions/chat";
 import { useRol } from "@/lib/rol";
 
-export type Msg = { rol: "user" | "bot"; texto: string };
+export type Msg = { rol: "user" | "bot"; texto: string; insumos?: any[] };
 const KEY = "avihelp-chat";
 
 // Tips útiles por rol: enseñan a usar a Avi. Se eligen al azar (saludo + nudge inactivo).
@@ -83,8 +83,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setMsgs((m) => [...m, { rol: "user", texto: q }]);
     setCargando(true);
     try {
-      const { respuesta } = await preguntar(q);
-      setMsgs((m) => [...m, { rol: "bot", texto: respuesta }]);
+      const { respuesta, insumos } = await preguntar(q);
+      setMsgs((m) => [...m, { rol: "bot", texto: respuesta, insumos: insumos?.length ? insumos : undefined }]);
     } catch {
       setMsgs((m) => [...m, { rol: "bot", texto: "Error consultando. Intenta de nuevo." }]);
     } finally {
