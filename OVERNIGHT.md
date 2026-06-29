@@ -45,3 +45,24 @@ Seguro/alto valor primero; lo invasivo al final y solo si el gate lo cubre.
 
 ## Hallazgos de pruebas
 - #418 hydration en chat-home (entrada pública) — ARREGLADO (ee85247). Causa: `Math.random` en render (`chat-store.tsx`).
+
+## FEATURES MUST-HAVE (Jesús, prioridad máxima — implementar en este worktree)
+Orden: F2 (core) → F3 → F1. Cada una: rama propia o commits chicos en auto/overnight, gate `pnpm build`, checkpoint, sin romper smoke.
+
+### F2 — Donación inteligente con Avi (CORE, lo más importante)
+- Crear donación por **audio / foto / texto** reusando IA existente (`src/lib/ai/vision.ts`: analizarDocumento/analizarTexto/transcribirAudio) para extraer **productos + cantidades**.
+- Soporta donación **MIXTA**: varios productos de distinta índole (comida vs insumos médicos), cantidad separada por producto.
+- Avi **chatea mientras se crea**: recomienda dónde llevar, cómo organizar, y **MATCH** (lo más importante): si un producto coincide con una solicitud, recomienda el **centro/hospital** que lo necesita + el **ÁREA** (pediatría/traumatología/…) derivada de las solicitudes existentes. Ver `src/lib/ai/match.ts`, `actions/ofertas.ts`, `actions/donaciones.ts`.
+- **Zona** desde geolocalización del navegador (ya se pide para Avi). Mostrar refugios/centros de acopio cercanos + necesidades de hospitales.
+- **Usuario logueado: NO pedir nombre/teléfono** (ya se sabe quién es) → crear y relacionar directo. Fix `/ofrecer` (`src/app/ofrecer/page.tsx`): ocultar identidad si autenticado.
+- **CRUD "mis donaciones"** del usuario.
+- Cada donación **SIEMPRE ligada a centro de acopio o refugio** → genera **notificación encolada** a usuarios autorizados/admin (`actions/notificaciones`).
+
+### F3 — Dashboard drill-down a personas del hospital
+- En tabla "Hospitales — prioridad de atención" (`src/components/dashboard/Charts.tsx`), click en fila/críticos → ver **las personas de ese hospital**, con búsqueda y **edición de estado** (alta/fallecido/etc.) para administrar pacientes rápido.
+- Reusar `listarPersonas` filtrado por hospital_id + `PersonaDialog`. Modal o lista filtrada. (Coordinar: claude-6 hace dashboard hardening EXCEPTO esta tabla.)
+
+### F1 — "Mis Cargas" (galería de lo que subí)
+- Ruta `/mis-cargas` (login). **Grid** de imágenes subidas por el usuario, **zoom al tocar** (`Img` + react-medium-image-zoom ya instalado).
+- Al lado: info extraída de esa carga (insumos → insumos+hospital+info; lista personas → personas **editables**, poder añadir).
+- Data: ligar cada carga (storage `fotos`) con el usuario + entidades extraídas. Revisar `documentos`/`raw_extraccion`; quizá columna `user_id`/tabla `cargas`. Migración SOLO dev.
