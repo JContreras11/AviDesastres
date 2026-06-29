@@ -157,14 +157,15 @@ export async function hospitalesDeCentro(centroId: string) {
   return (data ?? []).map((r: any) => r.hospital_id);
 }
 
-// Lugares de ENTREGA de la donación para un hospital: centros de acopio cercanos
-// (relación por ciudad; los refugios ya viven como centros de acopio). Para el modal
+// Lugares de ENTREGA de la donación para un hospital: refugios/centros (instituciones)
+// cercanos por ciudad (tabla hospital_refugio). Fuente única = hospitales. Para el modal
 // de donación, la página de refugios y el chat de Avi (info pública).
 export async function lugaresEntrega(hospitalId: string) {
   if (!hospitalId) return [];
   const a = createAdminClient();
-  const { data: ch } = await a.from("centro_hospital")
-    .select("centros_acopio(id,nombre,zona,ubicacion,gps_lat,gps_lng,contacto_telefono,horario)").eq("hospital_id", hospitalId);
-  const cens = (ch ?? []).map((r: any) => r.centros_acopio).filter(Boolean);
-  return cens.map((c: any) => ({ ...c, tipo: "Centro de acopio" }));
+  const { data: hr } = await a.from("hospital_refugio").select("refugio_id").eq("hospital_id", hospitalId);
+  const ids = (hr ?? []).map((x: any) => x.refugio_id).filter(Boolean);
+  if (!ids.length) return [];
+  const { data } = await a.from("hospitales").select("id,nombre,ubicacion,gps_lat,gps_lng").in("id", ids);
+  return (data ?? []).map((r: any) => ({ ...r, tipo: "Centro de acopio" }));
 }
