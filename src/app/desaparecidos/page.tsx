@@ -6,7 +6,7 @@ export const metadata = { title: "Personas desaparecidas | AviHelp" };
 export const dynamic = "force-dynamic";
 
 export default async function DesaparecidosPage() {
-  const personas = await listarDesaparecidos();
+  const personas = await listarDesaparecidos().catch(() => []);
 
   return (
     <main className="flex-1 px-4 py-8 max-w-4xl mx-auto w-full">
