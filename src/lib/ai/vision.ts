@@ -9,7 +9,21 @@ const client = new OpenAI({
 
 const MODEL = process.env.OPENROUTER_VISION_MODEL ?? "google/gemini-2.5-flash-lite";
 const MODEL_HQ = process.env.OPENROUTER_VISION_MODEL_HQ ?? "google/gemini-2.5-flash";
+// PDF/Excel/texto suelen ser listas largas: arrancan con el modelo HQ (el lite trunca/falla el JSON).
+const MODEL_TEXTO = process.env.OPENROUTER_TEXT_MODEL ?? MODEL_HQ;
 const UMBRAL_CONFIANZA = 0.5;
+const MAX_TOKENS = 8000; // evita que una lista larga corte el JSON a mitad
+
+// Parseo robusto: salva respuestas con ```fences``` o texto alrededor del objeto.
+function parsearJSON(s: string): any | null {
+  if (!s?.trim()) return null;
+  try { return JSON.parse(s); } catch { /* sigue */ }
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) { try { return JSON.parse(fence[1]); } catch { /* sigue */ } }
+  const a = s.indexOf("{"), b = s.lastIndexOf("}");
+  if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch { /* sigue */ } }
+  return null;
+}
 
 // ── Modelo de datos unificado que la IA debe poblar ──
 export type PersonaExtraida = {
@@ -93,12 +107,14 @@ async function llamarCon(contenido: Contenido[], modelo: string) {
     ],
     response_format: { type: "json_object" },
     temperature: 0,
+    max_tokens: MAX_TOKENS,
   });
-  let raw: any = {};
-  try {
-    raw = JSON.parse(res.choices[0]?.message?.content ?? "{}");
-  } catch {
-    return { raw: {}, legible: false, confianza: 0, motivo: "Respuesta IA no parseable." };
+  const content = res.choices[0]?.message?.content ?? "";
+  const raw = parsearJSON(content);
+  if (!raw) {
+    const motivoCorte = (res.choices[0] as any)?.finish_reason === "length" ? " (respuesta cortada por longitud)" : "";
+    console.error(`[vision] IA no parseable modelo=${modelo} len=${content.length} head=${content.slice(0, 200)}`);
+    return { raw: {}, legible: false, confianza: 0, motivo: `Respuesta IA no parseable${motivoCorte}.` };
   }
   return {
     raw,
@@ -122,10 +138,11 @@ function normalizar(raw: any, r: { confianza: number }, modelo: string): Resulta
 async function ejecutar(
   contenido: Contenido[],
   rechazo: string,
+  modeloInicial: string = MODEL,
 ): Promise<Resultado<DocumentoAnalizado>> {
-  let modelo = MODEL;
+  let modelo = modeloInicial;
   let r = await llamarCon(contenido, modelo);
-  if (r.legible && r.confianza < UMBRAL_CONFIANZA) {
+  if (r.legible && r.confianza < UMBRAL_CONFIANZA && modelo !== MODEL_HQ) {
     modelo = MODEL_HQ;
     r = await llamarCon(contenido, modelo);
   }
@@ -164,10 +181,12 @@ export async function transcribirAudio(base64: string, format: string): Promise<
   return (res.choices[0]?.message?.content ?? "").trim();
 }
 
-// Texto (audio transcrito / dictado): mismo cerebro, sin imagen.
+// Texto (PDF/Excel/dictado): mismo cerebro, sin imagen. Arranca con el modelo HQ
+// porque suelen ser listas largas que el modelo lite trunca o devuelve mal.
 export function analizarTexto(texto: string) {
   return ejecutar(
-    [{ type: "text", text: `Texto dictado o transcrito de un voluntario:\n"""${texto}"""\nExtrae las entidades y devuelve el JSON.` }],
-    "No se entendió el audio. Intenta de nuevo, más claro.",
+    [{ type: "text", text: `Texto extraído de un documento (PDF, Excel o dictado). Procesa TODAS las filas:\n"""${texto}"""\nExtrae las entidades y devuelve el JSON.` }],
+    "No se pudo interpretar el documento. Revisa que tenga una lista legible.",
+    MODEL_TEXTO,
   );
 }
