@@ -11,6 +11,7 @@ import { useRol } from "@/lib/rol";
 const LINKS = [
   { href: "/", label: "Inicio" },
   { href: "/ofrecer", label: "Donar 💜" },
+  { href: "/mis-donaciones", label: "Mis donaciones" },
   { href: "/desaparecidos", label: "Desaparecidos" },
   { href: "/refugios", label: "Refugios" },
   { href: "/dashboard", label: "Panel" },

@@ -90,6 +90,32 @@ export async function sugerirMatches(ofertaId: string): Promise<number> {
   return error ? 0 : filas.length;
 }
 
+// "Mis donaciones": las ofertas que el usuario logueado ha registrado (con su centro de
+// entrega y estatus). Solo suyas (acotado a sc.uid).
+export async function misOfertas() {
+  const sc = await getScope();
+  if (!sc.uid) return [];
+  const a = createAdminClient();
+  const { data } = await a.from("ofertas")
+    .select("id,tipo,descripcion,cantidad,estatus,created_at,refugio_id,hospitales:refugio_id(nombre,ubicacion)")
+    .eq("usuario_oferente_id", sc.uid).order("created_at", { ascending: false });
+  return data ?? [];
+}
+
+// El oferente cancela su propia oferta (o un admin). Devuelve el nuevo estatus.
+export async function cancelarOferta(id: string) {
+  const sc = await getScope();
+  if (!sc.uid) return { ok: false as const, error: "Inicia sesión." };
+  const a = createAdminClient();
+  const { data: of } = await a.from("ofertas").select("usuario_oferente_id, estatus").eq("id", id).maybeSingle();
+  if (!of) return { ok: false as const, error: "Oferta no encontrada." };
+  if (!sc.admin && of.usuario_oferente_id !== sc.uid) return { ok: false as const, error: "No es tu oferta." };
+  if (of.estatus === "entregado") return { ok: false as const, error: "Ya fue entregada, no se puede cancelar." };
+  const { error } = await a.from("ofertas").update({ estatus: "cancelado" }).eq("id", id);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
+}
+
 // Cola de triage: sugerencias pendientes. admin ve todas; miembro solo las de sus hospitales.
 export async function listarTriage() {
   const sc = await getScope();
