@@ -13,8 +13,15 @@ export async function crearOferta(campos: Record<string, any>) {
   for (const k of CAMPOS) if (k in campos) limpio[k] = campos[k];
   if (!["insumo_fisico", "personal_humano"].includes(limpio.tipo)) return { ok: false, error: "Tipo de oferta inválido." };
   if (!limpio.descripcion?.trim()) return { ok: false, error: "Describe qué ofreces." };
-  if (!limpio.contacto_telefono?.trim()) return { ok: false, error: "Deja un teléfono de contacto." };
   limpio.usuario_oferente_id = sc.uid ?? null;
+  // Logueado: la identidad sale del perfil (no la pedimos en el form). Anónimo: exige teléfono.
+  if (sc.uid) {
+    const { data: perfil } = await a.from("profiles").select("nombre, telefono").eq("id", sc.uid).maybeSingle();
+    limpio.contacto_nombre = perfil?.nombre ?? limpio.contacto_nombre ?? null;
+    limpio.contacto_telefono = perfil?.telefono ?? limpio.contacto_telefono ?? null;
+  } else if (!limpio.contacto_telefono?.trim()) {
+    return { ok: false, error: "Deja un teléfono de contacto." };
+  }
   const { data, error } = await a.from("ofertas").insert(limpio).select().single();
   if (error) return { ok: false, error: error.message };
   // Match IA en background-best-effort: si falla, la oferta queda igual (se puede re-sugerir).
