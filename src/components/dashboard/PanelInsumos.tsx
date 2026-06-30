@@ -222,7 +222,7 @@ export function PanelInsumos({ data }: { data: Analytics }) {
                     <Button size="sm" variant="outline" className="flex-1 min-w-[110px] h-9" onClick={() => setInsumoOpen(i.id)}>
                       {gestiona(i.hospital_id) ? "⚙️ Gestionar" : "📦 Ver donaciones"}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-9 px-3" aria-label="Compartir" onClick={() => compartir(`/necesidad/${i.id}`, i.nombre)}>↗</Button>
+                    <Button size="sm" variant="ghost" className="h-9 px-3" aria-label="Compartir" onClick={() => compartir(`/compartir/hospital/${i.hospital_id}`, `${i.nombre} — ${i.hospitalNombre}`)}>↗</Button>
                   </div>
                 </div>
               ))}
