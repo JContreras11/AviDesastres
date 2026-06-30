@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Mic, Square, Paperclip } from "lucide-react";
 import { useChat } from "@/lib/chat-store";
 import { subscribeAvi, type AviIntent } from "@/lib/avi-bus";
 import { useRol } from "@/lib/rol";
 import { DonarBoton, presentacionDe } from "@/components/DonarInsumo";
 import { ResultadoCards } from "@/components/chat/ResultadoCards";
+import { Captura } from "@/components/Captura";
 
 // URLs externas (https) abren en pestaña nueva; rutas internas (/ofrecer, /compartir…) navegan en la misma app.
 function conLinks(texto: string) {
-  const re = /(https?:\/\/[^\s)]+|\/(?:ofrecer|compartir|refugios|desaparecidos|dashboard|chat|solicitud(?:es)?|admin\/[a-z]+)[^\s).,]*)/g;
+  const re = /(https?:\/\/[^\s)]+|\/(?:ofrecer|compartir|refugios|desaparecidos|dashboard|chat|solicitud(?:es)?|donaciones|mis-cargas|mis-donaciones|admin\/[a-z]+)[^\s).,]*)/g;
   return texto.split(re).map((p, i) => {
     if (/^https?:\/\//.test(p)) return <a key={i} href={p} target="_blank" rel="noreferrer" className="underline text-primary break-all">{p}</a>;
     if (/^\//.test(p)) return <a key={i} href={p} className="underline text-primary font-medium">{p}</a>;
@@ -55,10 +57,15 @@ function renderRich(texto: string) {
 
 // Panel de chat reutilizable: misma conversación en la página /chat y en el widget.
 // `prefill` lo inyecta quien controla la apertura (p.ej. ChatWidget) vía avi-bus.
-export function ChatPanel({ className = "", prefill }: { className?: string; prefill?: { text: string; nonce: number } }) {
+export function ChatPanel({ className = "", prefill, embedUploads = false }: { className?: string; prefill?: { text: string; nonce: number; send?: boolean }; embedUploads?: boolean }) {
   const { msgs, cargando, grabando, enviar, toggleMic, subirArchivos, nudge } = useChat();
   const { puede } = useRol();
+  const pathname = usePathname();
   const subir = puede("cargar"); // staff verificado: puede arrastrar imágenes/documentos a Avi
+  // Cola de carga DENTRO del chat: hace VISIBLE lo que se sube por Avi (preview + Guardar +
+  // confirmación) sin depender de un panel de página. Se evita en rutas que YA montan <Captura>
+  // (home y /documentos) para no duplicar el listener de "avi-cargar".
+  const embedCola = subir && embedUploads && pathname !== "/" && pathname !== "/documentos";
   const [input, setInput] = useState("");
   const [drag, setDrag] = useState(false);
   const listaRef = useRef<HTMLDivElement>(null);
@@ -84,7 +91,12 @@ export function ChatPanel({ className = "", prefill }: { className?: string; pre
   }), []);
 
   // Prefill inyectado por el contenedor que abre el panel (ChatWidget) tras un avi-bus intent.
-  useEffect(() => { if (prefill?.text != null) setInput(prefill.text); }, [prefill?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Si viene de un FLUJO (send=true), Avi arranca solo (lo envía) para DAR un resultado, no solo guiar.
+  useEffect(() => {
+    if (prefill?.text == null) return;
+    if (prefill.send) { setInput(""); enviar(prefill.text); }
+    else setInput(prefill.text);
+  }, [prefill?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Inactividad: si el usuario está en el chat y lleva rato sin hablar, Avi lanza un tip útil.
   useEffect(() => {
@@ -148,6 +160,12 @@ export function ChatPanel({ className = "", prefill }: { className?: string; pre
           </div>
         ))}
         {cargando && <span className="self-start text-sm text-muted-foreground animate-pulse">escribiendo…</span>}
+        {/* Resultado VISIBLE de las cargas hechas por Avi: preview editable + Guardar, aquí mismo. */}
+        {embedCola && (
+          <div className="mt-1 border-t pt-2">
+            <Captura soloCola />
+          </div>
+        )}
       </div>
       <form onSubmit={submit} className="flex items-center gap-2 p-2 border-t bg-background">
         {/* Adjuntar archivo (solo staff con permiso): imágenes/PDF/Excel/Word → Avi los procesa. */}

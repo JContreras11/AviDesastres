@@ -12,7 +12,7 @@ export default function ChatPage() {
         </div>
       </div>
       <div className="max-w-2xl mx-auto h-[70dvh] rounded-2xl border bg-card overflow-hidden">
-        <ChatPanel className="h-full" />
+        <ChatPanel className="h-full" embedUploads />
       </div>
     </main>
   );

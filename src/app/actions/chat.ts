@@ -5,7 +5,7 @@ import { createAdminClient, getSesion } from "@/lib/supabase/server";
 import { transcribirAudio } from "@/lib/ai/vision";
 import { buscarExterno } from "@/app/actions/externos";
 import { consultarEntidad } from "@/app/actions/consultas";
-import { estadoSolicitudesParaChat } from "@/app/actions/solicitudes";
+import { estadoSolicitudesParaChat, crearSolicitudDesdeTexto } from "@/app/actions/solicitudes";
 
 // Transcribe audio del micrófono a texto (para hablarle al chat).
 export async function transcribirVoz(formData: FormData): Promise<string> {
@@ -62,11 +62,13 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
         role: "system",
         content:
           "Clasifica la pregunta del usuario en una emergencia humanitaria. Responde SOLO JSON: " +
-          '{"tipo":"datos|ayuda","entidad":"hospital|refugio|insumo|centro|persona|solicitud|null","nombre":string|null,"ubicacion":string|null,"hospital":string|null,"estado":"vivo|herido|desaparecido|fallecido"|null}. ' +
-          '"datos" = pide información concreta (refugios cercanos, quién es el responsable, dónde queda, qué insumos faltan, buscar a una persona, el estado de las solicitudes). ' +
+          '{"tipo":"datos|ayuda","entidad":"hospital|refugio|insumo|centro|persona|solicitud|donacion|null","accion":"crear_solicitud|null","nombre":string|null,"ubicacion":string|null,"hospital":string|null,"estado":"vivo|herido|desaparecido|fallecido"|null}. ' +
+          '"datos" = pide información concreta (refugios cercanos, quién es el responsable, dónde queda, qué insumos faltan, buscar a una persona, el estado de las solicitudes o de sus donaciones). ' +
           'entidad="solicitud" cuando pregunte por el ESTADO de sus solicitudes/pedidos/paquetes de necesidades o cómo van (ej. "¿cuál es el estado de mis solicitudes?", "¿cómo van mis pedidos?"). ' +
+          'entidad="donacion" cuando pregunte por el ESTADO de SUS donaciones/ofrecimientos/lo que donó o envió (ej. "¿cómo va mi donación?", "estado de mis donaciones", "¿llegó lo que mandé?"). ' +
+          'accion="crear_solicitud" SOLO si el usuario está PIDIENDO crear/registrar/armar/publicar una solicitud o pedido de insumos Y enumera al menos un insumo concreto en su mensaje (ej. "crea una solicitud con 50 férulas y 20 guantes para el hospital X"). Si solo dice "quiero crear una solicitud" SIN listar insumos, accion=null (hay que pedirle la lista primero). ' +
           '"ayuda" = cómo USAR la plataforma (cómo donar, cómo reportar). ' +
-          "entidad: hospital (centro de salud/clínica: responsable/ubicación), refugio (refugios/albergues y refugios CERCANOS a un hospital), insumo (qué falta), centro (centro de acopio), persona (buscar a alguien). " +
+          "entidad: hospital (centro de salud/clínica: responsable/ubicación), refugio (refugios/albergues y refugios CERCANOS a un hospital), insumo (qué falta), centro (centro de acopio), persona (buscar a alguien), donacion (estado de lo que el usuario donó). " +
           'nombre = nombre del refugio/centro/persona. hospital = nombre del hospital/clínica mencionado (p. ej. "refugios cerca del hospital Razetti" -> entidad="refugio", hospital="Razetti").',
       },
       { role: "user", content: pregunta },
@@ -76,6 +78,34 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
   });
   let filtros: any = {};
   try { filtros = JSON.parse(f.choices[0]?.message?.content ?? "{}"); } catch {}
+
+  // 1.5) ACCIÓN REAL: crear una solicitud desde el mensaje (Avi DA un resultado, no solo guía).
+  //      Solo si el clasificador detectó que el usuario pide crear+listó insumos. La acción
+  //      respeta el scope (resolverHospital exige que el usuario gestione un centro).
+  if (filtros.accion === "crear_solicitud") {
+    if (!sesion) {
+      return { respuesta: "Para registrar una solicitud necesito que inicies sesión como personal de un centro de salud. Si ya tienes cuenta, entra en /login y vuelve a pedírmelo.", fuentes: [] };
+    }
+    const r = await crearSolicitudDesdeTexto({ texto: pregunta });
+    if (r.ok) {
+      const url = `/solicitud/${r.slug}`;
+      const detalle = [r.creadas && `${r.creadas} necesidad(es) nueva(s)`, r.actualizadas && `${r.actualizadas} actualizada(s)`].filter(Boolean).join(", ");
+      const respuesta =
+        `¡Listo! Creé tu solicitud${detalle ? ` con ${detalle}` : ""}. ✅\n` +
+        `Ya está publicada y puedes compartir este enlace para que cualquiera done directo: ${url}\n` +
+        `Toca la tarjeta de abajo para abrirla y revisar o cambiar su estado.`;
+      const resultados: ResultadoChat[] = [{ tipo: "solicitud", id: r.id, titulo: "Solicitud creada", estado: "abierta", sub: detalle || "Lista para compartir", url }];
+      return { respuesta, fuentes: [], resultados };
+    }
+    // No se pudo (falta elegir centro, sin necesidades, sin permiso): Avi lo explica claro.
+    return { respuesta: `No pude crear la solicitud todavía: ${r.error} Dime los insumos (ej. "50 férulas, 20 cajas de guantes") y, si gestionas varios centros, indícame para cuál.`, fuentes: [] };
+  }
+
+  // Red de seguridad: si el clasificador no lo marcó pero el texto pide el estado de SUS
+  // donaciones, forzamos la consulta de donaciones (con scope por rol).
+  if (sesion && (!filtros.entidad || filtros.entidad === "null") && /\b(mis donaciones|mi donaci|estado de (mi|mis) don|lo que (don[eé]|mand[eé]|envi[eé]))/i.test(pregunta)) {
+    filtros.tipo = "datos"; filtros.entidad = "donacion";
+  }
 
   // 2) Consultar la base CON SCOPE POR ROL (tool de consulta de entidad).
   //    consultarEntidad decide qué campos puede ver el usuario según su rol.
@@ -121,6 +151,7 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
           "Si buscas una persona y no hay datos locales pero sí externos, preséntalos indicando la fuente e invita a confirmar; escribe los 'Enlaces' como URLs completas al final. " +
           "REFUGIOS/CENTROS: si te doy una lista de refugios o centros (incl. 'refugios cercanos'), enuméralos AQUÍ con su nombre y ubicación, y para cada uno incluye su enlace 'como_llegar' como URL completa (https://…) para que llegue desde su ubicación. NUNCA redirijas a /refugios para esto. " +
           "SOLICITUDES: si te doy una lista de solicitudes, enuméralas AQUÍ con su título, estado (abierta/en progreso/cubierta/cerrada) y avance (cubiertas/total), e incluye SIEMPRE su enlace directo a la página de estado tal cual te lo doy (ej. /solicitud/abc123) para que el usuario haga clic. Si no tiene ninguna, dilo y sugiérele crear una en /solicitudes. " +
+          "DONACIONES: si te doy una lista de donaciones del usuario (entidad donacion), enuméralas AQUÍ con su descripción, estado (pendiente/en tránsito/recibido/cancelado) y el centro destino, e incluye su enlace de seguimiento tal cual te lo doy (ej. /donaciones/AB12CD o /mis-donaciones). Si no tiene ninguna, dilo y sugiérele ofrecer ayuda en /ofrecer. " +
           "Si de verdad no hay nada, dilo claro y ofrece una alternativa concreta.\n\n" + GUIA,
       },
       { role: "user", content:
@@ -139,7 +170,7 @@ export async function preguntar(pregunta: string): Promise<{ respuesta: string; 
 
 // Tarjeta rica para el chat: el front la pinta con badge de estado y, si trae id, expande a su modal.
 export type ResultadoChat = {
-  tipo: "persona" | "insumo" | "hospital" | "centro" | "externo";
+  tipo: "persona" | "insumo" | "hospital" | "centro" | "externo" | "solicitud" | "donacion";
   id?: string; titulo: string; estado?: string | null; sub?: string | null; foto?: string | null; url?: string | null;
 };
 
@@ -155,6 +186,14 @@ function construirResultados(entidad: string | undefined, rows: any[], externos:
     for (const x of top) out.push({ tipo: "hospital", id: x.id, titulo: x.nombre ?? "Institución", sub: x.ubicacion ?? null });
   } else if (entidad === "centro") {
     for (const x of top) out.push({ tipo: "centro", id: x.id, titulo: x.nombre ?? "Centro", sub: x.zona ?? x.ubicacion ?? null });
+  } else if (entidad === "donacion") {
+    for (const x of top) out.push({
+      tipo: "donacion",
+      titulo: x.descripcion || (x.tipo === "personal_salud" ? "Ofrecimiento de personal" : "Donación"),
+      estado: x.entrega_estado ?? x.estatus ?? null,
+      sub: [x.cantidad, x.centro].filter(Boolean).join(" · ") || null,
+      url: x.url ?? null,
+    });
   }
   return out;
 }
