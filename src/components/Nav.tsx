@@ -10,9 +10,9 @@ import { useRol } from "@/lib/rol";
 // Enlaces de navegación. En escritorio van inline; en móvil entran al menú hamburguesa.
 const LINKS = [
   { href: "/", label: "Inicio" },
-  { href: "/ofrecer", label: "Donar 💜" },
+  { href: "/donaciones/crear", label: "Donar 💜" },
   { href: "/solicitudes", label: "Solicitudes" },
-  { href: "/mis-donaciones", label: "Mis donaciones" },
+  { href: "/donaciones", label: "Mis donaciones" },
   { href: "/mis-cargas", label: "Mis cargas" },
   { href: "/desaparecidos", label: "Desaparecidos" },
   { href: "/refugios", label: "Refugios" },
@@ -20,7 +20,7 @@ const LINKS = [
   { href: "/chat", label: "Avi" },
 ];
 // Visitante sin cuenta: Inicio, Donar, Avi + refugios/desaparecidos (solo ver/buscar).
-const PUB_HREFS = new Set(["/", "/ofrecer", "/chat", "/desaparecidos", "/refugios"]);
+const PUB_HREFS = new Set(["/", "/donaciones/crear", "/chat", "/desaparecidos", "/refugios"]);
 
 export function Nav() {
   const { email } = useRol();
