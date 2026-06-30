@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Img } from "@/components/Img";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { HelpTip } from "@/components/ui/help-tip";
 import { categoriaDoc, type DocumentoAnalizado } from "@/lib/ai/vision";
 import { HospitalSelect, type HospitalOpt } from "./HospitalSelect";
 import type { ColaItem } from "./tipos";
@@ -42,7 +43,7 @@ function emparejar(nombre: string | null | undefined, lista: HospitalOpt[]): Hos
   return m ?? null;
 }
 
-function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+function Campo({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
       {label}
@@ -94,7 +95,10 @@ export function DocCard({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {item.estado === "error" && onReintentar && (
-            <Button type="button" size="sm" variant="outline" onClick={onReintentar}>↻ Reintentar</Button>
+            <>
+              <HelpTip label="¿Por qué falló?">A veces la IA no logra leer una página densa o borrosa. Toca «Reintentar» — casi siempre funciona en el segundo intento.</HelpTip>
+              <Button type="button" size="sm" variant="outline" onClick={onReintentar}>↻ Reintentar</Button>
+            </>
           )}
           {item.estado !== "guardado" && (
             <button type="button" onClick={onDescartar} title="Quitar" aria-label="Quitar de la cola"
@@ -125,6 +129,7 @@ export function DocCard({
           ); })()}
           <Badge variant="outline" className="text-sm py-1 px-3">{p.tipo.replace(/_/g, " ")}</Badge>
           <Badge variant="secondary" className="text-sm py-1 px-3">confianza {Math.round(item.confianza * 100)}%</Badge>
+          <HelpTip label="¿Qué es la categoría?">La IA clasificó el documento (personas, insumos o donaciones). Si se equivocó, corrige los datos abajo antes de guardar.</HelpTip>
         </div>
       </div>
 
@@ -134,7 +139,7 @@ export function DocCard({
 
       {/* Hospital: combobox BUSCABLE contra existentes (se enlaza por id, sin duplicar) con
           opción de "crear nueva". Solo se crea una nueva si lo eliges a propósito o la IA la detectó. */}
-      <Campo label="🏥 Hospital / institución">
+      <Campo label={<>🏥 Hospital / institución <HelpTip label="¿Qué institución pongo?">Busca el hospital o refugio en la lista para enlazarlo. Si no existe, escribe el nombre y elige «crear» para añadirlo.</HelpTip></>}>
         <HospitalSelect
           hospitales={hospitales}
           value={p.hospital ?? null}

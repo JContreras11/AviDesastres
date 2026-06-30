@@ -20,9 +20,10 @@ const LINKS = [
   { href: "/refugios", label: "Centros" },
   { href: "/dashboard", label: "Panel" },
   { href: "/chat", label: "Avi" },
+  { href: "/ayuda", label: "Ayuda ❓" }, // AGENT H: enlace ADITIVO a la guía completa (público)
 ];
-// Visitante sin cuenta: Inicio, Donar, Avi + refugios/desaparecidos (solo ver/buscar).
-const PUB_HREFS = new Set(["/", "/donaciones/crear", "/chat", "/desaparecidos", "/refugios"]);
+// Visitante sin cuenta: Inicio, Donar, Avi + refugios/desaparecidos (solo ver/buscar) + Ayuda.
+const PUB_HREFS = new Set(["/", "/donaciones/crear", "/chat", "/desaparecidos", "/refugios", "/ayuda"]);
 
 export function Nav() {
   const { email } = useRol();

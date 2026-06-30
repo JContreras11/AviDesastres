@@ -38,7 +38,7 @@ export async function consultarEntidad(entidad: Entidad, filtro: Filtro = {}) {
     const { data } = await q;
     const rows = [] as any[];
     for (const h of data ?? []) {
-      const tipoTxt = h.tipo === "clinica" ? "Clínica" : h.tipo === "refugio" ? "Refugio" : "Hospital";
+      const tipoTxt = h.tipo === "clinica" ? "Clínica" : h.tipo === "refugio" ? "Refugio" : h.tipo === "centro" ? "Centro de acopio" : "Hospital";
       const base: any = { tipo: tipoTxt, nombre: h.nombre, ubicacion: h.ubicacion ?? null };
       // Dónde entregar donaciones para este hospital (refugios cercanos + centros). Info pública.
       if (tipoTxt !== "Refugio") base.donde_entregar_donaciones = await lugaresEntrega(h.id);

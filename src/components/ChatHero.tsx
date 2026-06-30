@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ChatPanel } from "@/components/ChatPanel";
 import { useChat } from "@/lib/chat-store";
 import { Logo } from "@/components/Brand";
@@ -21,6 +22,7 @@ export function ChatHero({ subtitulo }: { subtitulo?: string }) {
         <Logo size={72} />
         <h1 className="mt-3 text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-[#5eead4] bg-clip-text text-transparent">Soy Avi</h1>
         <p className="text-muted-foreground mt-1 max-w-md">{subtitulo ?? "Pregúntame, busca, o arrastra una lista/foto y la entiendo. Estoy para ayudarte."}</p>
+        <Link href="/ayuda" className="mt-2 text-sm font-medium text-primary hover:underline">¿Cómo funciona? Ver guía completa →</Link>
       </div>
       <div className="flex flex-wrap gap-2 justify-center mb-3">
         {CHIPS.map((c) => (

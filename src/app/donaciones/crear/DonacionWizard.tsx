@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { HelpTip } from "@/components/ui/help-tip";
 import { CompartirDonacion } from "@/components/donaciones/CompartirDonacion";
 import { CopyableText } from "@/components/donaciones/CopyableText";
 import { Logo } from "@/components/Brand";
@@ -223,7 +224,7 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
       <section className="flex-1 flex flex-col gap-3">
         {paso === "tipo" && (
           <div className="grid grid-cols-1 gap-3">
-            <p className="text-base font-semibold">¿Qué quieres donar?</p>
+            <p className="text-base font-semibold">¿Qué quieres donar? <HelpTip label="¿Qué puedo donar?">Elige insumos físicos (medicinas, material, comida, ropa) o, si eres personal de salud, ofrécete a ayudar.</HelpTip></p>
             <PasoBtn activo={tipo === "insumo_fisico"} onClick={() => { setTipo("insumo_fisico"); }} emoji="📦" titulo="Insumos para donar" sub="Medicamentos, material médico, alimentos, ropa…" />
             <PasoBtn activo={tipo === "personal_humano"} onClick={() => { setTipo("personal_humano"); }} emoji="🩺" titulo="Soy personal de salud" sub="Médico, enfermería, paramédico disponible" />
           </div>
@@ -271,10 +272,10 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
                     <button type="button" onClick={() => quitarItem(i)} aria-label="Quitar" className="shrink-0 size-9 rounded-lg border hover:bg-muted">✕</button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">Cantidad
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground"><span>Cantidad <HelpTip label="¿Qué cantidad pongo?">Cuántas unidades donas de este producto (por ejemplo, 20).</HelpTip></span>
                       <Input type="number" inputMode="numeric" value={it.cantidad ?? ""} onChange={(e) => setItem(i, { cantidad: e.target.value ? Number(e.target.value) : null })} className="h-11 text-base" placeholder="Ej: 20" />
                     </label>
-                    <label className="flex flex-col gap-1 text-xs text-muted-foreground">Presentación
+                    <label className="flex flex-col gap-1 text-xs text-muted-foreground"><span>Presentación <HelpTip label="¿Qué es la presentación?">Cómo viene el producto: caja, frasco, ampolla, sobre… Elige una o escribe la tuya.</HelpTip></span>
                       <SearchableSelect
                         options={PRESENTACIONES.map((p) => ({ value: p, label: p }))}
                         value={it.presentacion ?? null} onChange={(v) => setItem(i, { presentacion: v })}
@@ -282,12 +283,12 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
                       />
                     </label>
                   </div>
-                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">Vencimiento <span className="opacity-70">(opcional, para perecederos)</span>
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground"><span>Vencimiento <span className="opacity-70">(opcional, para perecederos)</span> <HelpTip label="¿Para qué el vencimiento?">Solo si el producto caduca (medicinas, comida). Ayuda a priorizar lo que vence pronto.</HelpTip></span>
                     <Input type="date" value={it.vencimiento ?? ""} onChange={(e) => setItem(i, { vencimiento: e.target.value || null })} className="h-11 text-base" />
                   </label>
                   {opciones.length > 0 ? (
                     <div className="flex flex-col gap-1.5 rounded-lg bg-primary/5 border p-2">
-                      <p className="text-xs font-semibold">🤖 ¿Para quién es? Esto lo necesita:</p>
+                      <p className="text-xs font-semibold">🤖 ¿Para quién es? Esto lo necesita: <HelpTip label="¿Asignar o dejar libre?">Si eliges un hospital, tu donación queda reservada para él. «Dejar libre» permite que el equipo la asigne a donde más falte.</HelpTip></p>
                       <div className="flex flex-col gap-1">
                         {opciones.map((n) => {
                           const sel = it.insumo_id === n.insumo_id;
@@ -320,7 +321,7 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
         {/* FIX 3/4/5: paso ÚNICO de entrega — ubicación + mapa + recomendar cercano + elegir ≥1. */}
         {paso === "entrega" && (
           <div className="flex flex-col gap-3">
-            <p className="text-base font-semibold">¿Dónde la entregas?</p>
+            <p className="text-base font-semibold">¿Dónde la entregas? <HelpTip label="¿Dónde entrego?">Elige uno o varios centros de acopio o refugios donde dejar tu donación. El más cercano a ti será el recomendado.</HelpTip></p>
             <p className="text-sm text-muted-foreground">Usa tu ubicación para ver los centros más cercanos. Elige uno o varios; el más cercano será tu punto recomendado.</p>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={ubicarme} disabled={ubicando} className="flex-1">

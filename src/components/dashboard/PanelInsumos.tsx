@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { HelpTip } from "@/components/ui/help-tip";
 import { DonarBoton, type InsumoDonable } from "@/components/DonarInsumo";
 import { InsumoDialog } from "@/components/datos/Detalle";
 import { useRol } from "@/lib/rol";
@@ -28,11 +29,11 @@ const ESTADO_PILL: Record<string, string> = {
 const TIPO_ICON: Record<string, string> = { refugio: "🏠", hospital: "🏥", clinica: "🏥", centro: "📦" };
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
 
-function Kpi({ label, valor, color, hint }: { label: string; valor: number; color: string; hint?: string }) {
+function Kpi({ label, valor, color, hint, tip }: { label: string; valor: number; color: string; hint?: string; tip?: React.ReactNode }) {
   return (
     <Card className="p-4" role="group" aria-label={`${label}: ${valor}`}>
       <div className={`text-2xl sm:text-3xl font-bold tabular-nums ${color}`}>{valor.toLocaleString("es")}</div>
-      <div className="text-sm font-medium mt-1">{label}</div>
+      <div className="text-sm font-medium mt-1">{label}{tip && <> <HelpTip label={`Qué significa ${label}`}>{tip}</HelpTip></>}</div>
       {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
     </Card>
   );
@@ -100,10 +101,10 @@ export function PanelInsumos({ data }: { data: Analytics }) {
     <div className="flex flex-col gap-6">
       {/* KPIs centrados en INSUMOS (no en personas). */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi label="Insumos por cubrir" valor={data.activosTotal} color="text-primary" hint="solicitados + en tránsito" />
-        <Kpi label="Críticos pendientes" valor={data.criticosTotal} color="text-red-600" hint="prioridad alta o crítica" />
+        <Kpi label="Insumos por cubrir" valor={data.activosTotal} color="text-primary" hint="solicitados + en tránsito" tip="Insumos solicitados que aún no llegan, incluyendo los que ya están en camino." />
+        <Kpi label="Críticos pendientes" valor={data.criticosTotal} color="text-red-600" hint="prioridad alta o crítica" tip="Insumos graves (prioridad alta o crítica) que todavía no se cubren. Son los más urgentes." />
         <Kpi label="En tránsito" valor={data.enTransitoTotal} color="text-blue-600" hint="ya en camino" />
-        <Kpi label="Atendidos" valor={data.atendidosTotal} color="text-green-600" hint="entregados o cubiertos" />
+        <Kpi label="Atendidos" valor={data.atendidosTotal} color="text-green-600" hint="entregados o cubiertos" tip="De todo lo solicitado, los insumos ya entregados o cubiertos. Compáralo con «por cubrir» para ver el avance." />
       </div>
 
       {/* Decisión: qué se necesita más y dónde (visible para TODOS). */}

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { HelpTip } from "@/components/ui/help-tip";
 import { Captura } from "@/components/Captura";
 import { crearSolicitudDesdeTexto, crearSolicitudDesdeURL, crearSolicitudDesdeInsumos, crearSolicitudDesdeCarga } from "@/app/actions/solicitudes";
 
@@ -33,6 +34,9 @@ export function CrearSolicitud({ hospitales, agrupables, cargas }: { hospitales:
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-sm font-medium text-muted-foreground">
+        ¿Cómo quieres cargar las necesidades? <HelpTip label="¿Qué opción elijo?">Documento: sube una foto/PDF/Excel. Pegar texto: copia una lista. Enlace (URL): la importamos de una web. Reunir: agrupa necesidades ya cargadas en un solo enlace.</HelpTip>
+      </p>
       {/* Botones de entrada — crystal clear */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {MODOS.map((m) => {

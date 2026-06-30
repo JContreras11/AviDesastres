@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { HelpTip } from "@/components/ui/help-tip";
 import { CentroModal, tipoInfo, type Centro, type Need } from "./CentroModal";
 
 // Leaflet toca window -> solo en cliente.
@@ -89,10 +90,15 @@ export function Refugios({ centros, needs }: { centros: Centro[]; needs: Need[] 
               placeholder="🔎 Buscar por nombre, zona, parroquia…"
               className="w-full h-11 px-3 rounded-xl border bg-background text-base"
             />
-            <SearchableSelect
-              options={tipoOpciones} value={tipo} onChange={setTipo}
-              placeholder="Tipo de lugar — todos"
-            />
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <SearchableSelect
+                  options={tipoOpciones} value={tipo} onChange={setTipo}
+                  placeholder="Tipo de lugar — todos"
+                />
+              </div>
+              <HelpTip label="¿Para qué sirve el filtro?">Muestra solo un tipo de lugar: hospital, clínica, refugio o centro de acopio. Combínalo con la búsqueda por nombre o zona.</HelpTip>
+            </div>
           </div>
 
           <p className="text-xs text-muted-foreground" aria-live="polite">
