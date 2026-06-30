@@ -53,6 +53,7 @@ export function LandingPublico({ insumos }: { insumos: Insumo[] }) {
         <Logo size={72} />
         <h1 className="mt-3 text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-[#5eead4] bg-clip-text text-transparent">Soy Avi</h1>
         <p className="text-muted-foreground mt-1 max-w-md">Pregúntame qué falta, a quién buscas o cómo donar. Estoy para ayudarte en la emergencia.</p>
+        <Link href="/ayuda" className="mt-2 text-sm font-medium text-primary hover:underline">¿Cómo funciona? Ver guía completa →</Link>
       </div>
 
       <div className="max-w-2xl mx-auto">

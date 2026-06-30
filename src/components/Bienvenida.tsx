@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -54,6 +55,9 @@ export function Bienvenida() {
             a una persona o insumos.
           </p>
         </div>
+        <Link href="/ayuda" onClick={cerrar} className="text-sm font-medium text-primary hover:underline">
+          Ver guía completa →
+        </Link>
         <DialogFooter>
           <Button size="lg" onClick={cerrar} className="w-full">Entendido</Button>
         </DialogFooter>

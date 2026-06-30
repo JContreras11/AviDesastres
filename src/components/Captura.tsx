@@ -17,6 +17,7 @@ import type { DocumentoAnalizado } from "@/lib/ai/vision";
 import type { ColaItem } from "./captura/tipos";
 import { DocCard } from "./captura/DocCard";
 import { HospitalSelect, type HospFiltro } from "./captura/HospitalSelect";
+import { HelpTip } from "@/components/ui/help-tip";
 
 const CONCURRENCIA = 2;
 
@@ -365,7 +366,7 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
           {/* Asignar la MISMA institución a todas las tarjetas a la vez (cada una puede cambiarla después). */}
           {listos > 1 && (
             <div className="rounded-xl border bg-muted/30 p-3 flex flex-col sm:flex-row sm:items-center gap-2">
-              <label className="text-sm font-medium shrink-0">🏥 Asignar todas a:</label>
+              <label className="text-sm font-medium shrink-0">🏥 Asignar todas a: <HelpTip label="¿Qué hace asignar todas?">Pone la misma institución a todas las tarjetas de golpe. Útil cuando un PDF largo es todo del mismo hospital; luego puedes cambiar alguna.</HelpTip></label>
               <div className="flex-1 min-w-0">
                 <HospitalSelect
                   hospitales={hospitales}
