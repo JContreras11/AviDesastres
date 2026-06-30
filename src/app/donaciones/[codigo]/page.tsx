@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDonacionPublica } from "@/app/actions/entregas";
+import { CompartirDonacion } from "@/components/donaciones/CompartirDonacion";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,12 @@ export default async function EstadoDonacion({ params }: { params: Promise<{ cod
       )}
 
       <div className="flex flex-col gap-2">
+        <CompartirDonacion codigo={codigo} />
+        {(d.estado === "pendiente" || d.estado === "en_transito") && (
+          <Link href={`/donaciones/recibir/${codigo}`} className="text-center rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-muted">
+            🏥 ¿Eres del hospital? Confirmar recepción
+          </Link>
+        )}
         <Link href="/donaciones/crear" className="text-center rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-muted">💜 Donar algo más</Link>
         <Link href="/donaciones" className="text-center text-sm text-primary underline">Ir a mis donaciones</Link>
       </div>

@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { CompartirDonacion } from "@/components/donaciones/CompartirDonacion";
 import { Logo } from "@/components/Brand";
 
 const MapaRefugios = dynamic(() => import("@/components/refugios/MapaRefugios").then((m) => m.MapaRefugios), {
@@ -32,7 +33,7 @@ const PRESENTACIONES = ["caja", "frasco", "ampolla", "vial", "tableta", "comprim
 
 type Paso = "tipo" | "captura" | "personal" | "items" | "ubicacion" | "entrega" | "contacto" | "enviar";
 
-export default function DonacionWizard({ autenticado, nombre, centros }: { autenticado: boolean; nombre: string | null; centros: Centro[] }) {
+export default function DonacionWizard({ autenticado, nombre, centros, hospitalCtx = null }: { autenticado: boolean; nombre: string | null; centros: Centro[]; hospitalCtx?: { id: string; nombre: string } | null }) {
   const [tipo, setTipo] = useState<"insumo_fisico" | "personal_humano" | null>(null);
   const [items, setItems] = useState<ItemDonacion[]>([]);
   const [neces, setNeces] = useState<Record<number, NecesidadOpcion[]>>({});
@@ -81,7 +82,15 @@ export default function DonacionWizard({ autenticado, nombre, centros }: { auten
   useEffect(() => {
     if (paso !== "items" || !items.length) return;
     const nombres = items.map((i) => i.nombre);
-    necesidadesParaItems(nombres).then(setNeces).catch(() => {});
+    necesidadesParaItems(nombres).then((res) => {
+      // Si venimos de /compartir?hospital=ID, priorizamos las necesidades de ese hospital.
+      if (hospitalCtx) {
+        for (const k of Object.keys(res)) {
+          res[+k] = [...res[+k]].sort((a, b) => Number(b.hospital_id === hospitalCtx.id) - Number(a.hospital_id === hospitalCtx.id));
+        }
+      }
+      setNeces(res);
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paso, items.map((i) => i.nombre).join("|")]);
 
@@ -172,6 +181,11 @@ export default function DonacionWizard({ autenticado, nombre, centros }: { auten
         <p className="text-xs text-muted-foreground">Paso {pasoNum} de {total}</p>
       </header>
 
+      {hospitalCtx && paso === "tipo" && (
+        <p className="text-sm rounded-lg bg-primary/5 border px-3 py-2">
+          🏥 Estás ayudando a <span className="font-semibold">{hospitalCtx.nombre}</span>. Priorizaremos sus necesidades al relacionar tu donación.
+        </p>
+      )}
       {autenticado && paso === "tipo" && (
         <p className="text-sm rounded-lg bg-primary/5 border px-3 py-2">
           Donas como <span className="font-semibold">{nombre || "tu cuenta"}</span>. Usaremos tu perfil para contactarte.
@@ -291,6 +305,9 @@ export default function DonacionWizard({ autenticado, nombre, centros }: { auten
         {paso === "entrega" && (
           <div className="flex flex-col gap-3">
             <p className="text-base font-semibold">¿Dónde la entregas?</p>
+            {centros.length === 0 && (
+              <p className="text-sm rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-amber-800">Aún no hay centros de acopio cargados. Registra tu donación con tu contacto y un coordinador te indicará dónde entregarla.</p>
+            )}
             {hospitalesRelacionados.size > 0 && (
               <p className="text-xs rounded-lg bg-primary/5 border px-3 py-2">Relacionaste tu donación con {hospitalesRelacionados.size} hospital(es). Elige un centro de acopio o refugio cercano para dejarla.</p>
             )}
@@ -406,7 +423,8 @@ function Exito({ ok, autenticado, onOtra }: { ok: { codigos: string[]; matches: 
           </div>
         )}
         <div className="flex flex-col gap-2 w-full mt-1">
-          <Link href="/donaciones" className="text-sm text-primary underline">Ver mis donaciones</Link>
+          {ok.codigos.length === 1 && <CompartirDonacion codigo={ok.codigos[0]} />}
+          <Link href="/donaciones" className="text-center text-sm text-primary underline">Ver mis donaciones</Link>
           <Button variant="outline" onClick={onOtra}>Donar algo más</Button>
         </div>
       </div>
