@@ -20,15 +20,15 @@ function mensajePorFlow(flow?: AviIntent["flow"]): string | undefined {
 // Oculto en la propia página /chat (ahí se ve completo) y en login/print.
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
-  const [prefill, setPrefill] = useState<{ text: string; nonce: number }>();
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number; send?: boolean }>();
   const path = usePathname();
 
-  // avi-bus: una intención abre la burbuja y prellena el input de Avi. Si solo trae `flow`
-  // (sin texto), arrancamos con un mensaje orientado a ese flujo para que Avi guíe.
+  // avi-bus: una intención abre la burbuja y prellena el input de Avi. Si trae un `flow`
+  // (solicitud/donacion/persona), Avi arranca SOLO (send) para empezar a actuar, no solo guiar.
   useEffect(() => subscribeAvi((i) => {
     setOpen(true);
     const msg = i.message ?? mensajePorFlow(i.flow);
-    if (msg != null) setPrefill({ text: msg, nonce: Date.now() });
+    if (msg != null) setPrefill({ text: msg, nonce: Date.now(), send: !!i.flow && i.flow !== "general" });
   }), []);
 
   if (path === "/chat" || path === "/login" || path.startsWith("/print")) return null;
@@ -48,7 +48,7 @@ export function ChatWidget() {
             </div>
             <button onClick={() => setOpen(false)} className="size-7 rounded-full hover:bg-muted text-muted-foreground" title="Cerrar" aria-label="Cerrar chat">✕</button>
           </div>
-          <ChatPanel className="flex-1 min-h-0" prefill={prefill} />
+          <ChatPanel className="flex-1 min-h-0" prefill={prefill} embedUploads />
         </div>
       )}
       <button onClick={() => setOpen((o) => !o)}

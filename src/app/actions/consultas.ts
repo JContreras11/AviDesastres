@@ -1,6 +1,6 @@
 "use server";
 
-import { createAdminClient, getSesion } from "@/lib/supabase/server";
+import { createAdminClient, getSesion, getScope } from "@/lib/supabase/server";
 import { lugaresEntrega } from "@/app/actions/donaciones";
 
 // TOOL de consulta de entidad para el chat (y reutilizable). Devuelve datos de
@@ -13,7 +13,7 @@ import { lugaresEntrega } from "@/app/actions/donaciones";
 // publico / anónimo: solo info pública (ubicación, necesidades, desaparecidos).
 
 type Filtro = { nombre?: string; ubicacion?: string; id?: string; estado?: string; hospital?: string };
-export type Entidad = "hospital" | "refugio" | "insumo" | "centro" | "persona";
+export type Entidad = "hospital" | "refugio" | "insumo" | "centro" | "persona" | "donacion";
 
 const like = (v?: string) => `%${(v ?? "").trim()}%`;
 // Enlace de "cómo llegar" (desde la ubicación del usuario) a un lugar con o sin gps.
@@ -97,6 +97,35 @@ export async function consultarEntidad(entidad: Entidad, filtro: Filtro = {}) {
     if (filtro.ubicacion) q = q.ilike("ubicacion", like(filtro.ubicacion));
     const { data } = await q;
     return { entidad, rol, rows: (data ?? []).map((x: any) => ({ nombre: x.nombre, ubicacion: x.ubicacion, como_llegar: comoLlegar(x) })) };
+  }
+
+  if (entidad === "donacion") {
+    // Donaciones (ofertas + su entrega) READ-ONLY por rol. Cada una enlaza a su
+    // página pública de estado /donaciones/{codigo} (la del entrega) y al panel /mis-donaciones.
+    // admin/medico: las más recientes (vista global). Logueado normal: SOLO las suyas. Anónimo: nada.
+    const sc = await getScope();
+    if (!sc.uid) {
+      return { entidad, rol, rows: [], nota: "Inicia sesión para ver el estado de tus donaciones." };
+    }
+    let q = a.from("ofertas")
+      .select("id,codigo,tipo,descripcion,cantidad,estatus,created_at,refugio_id,hospitales:refugio_id(nombre,ubicacion),entregas(codigo,estado,recibido_at)")
+      .order("created_at", { ascending: false }).limit(adminReal ? 40 : 100);
+    if (!adminReal) q = q.eq("usuario_oferente_id", sc.uid);
+    if (filtro.nombre) q = q.ilike("descripcion", like(filtro.nombre));
+    const { data } = await q;
+    const rows = (data ?? []).map((o: any) => {
+      const ent = Array.isArray(o.entregas) ? o.entregas[0] : o.entregas;
+      const codigo = ent?.codigo ?? o.codigo ?? null;
+      return {
+        descripcion: o.descripcion, tipo: o.tipo, cantidad: o.cantidad,
+        estatus: o.estatus, entrega_estado: ent?.estado ?? null,
+        centro: o.hospitales?.nombre ?? null, ubicacion: o.hospitales?.ubicacion ?? null,
+        codigo,
+        // Enlace público de seguimiento (si ya hay entrega con código) o el panel del usuario.
+        url: codigo ? `/donaciones/${codigo}` : "/mis-donaciones",
+      };
+    });
+    return { entidad, rol, rows, nota: adminReal ? null : "Estas son TUS donaciones registradas." };
   }
 
   // persona

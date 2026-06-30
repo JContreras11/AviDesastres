@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, User, Pill, Building2, Package } from "lucide-react";
+import { ArrowUpRight, User, Pill, Building2, Package, FileText, HeartHandshake } from "lucide-react";
 import { toast } from "sonner";
 import { useRol } from "@/lib/rol";
 import { PersonaDialog, InsumoDialog, HospitalDialog, CentroDialog } from "@/components/datos/Detalle";
 
 export type ResultadoChat = {
-  tipo: "persona" | "insumo" | "hospital" | "centro" | "externo";
+  tipo: "persona" | "insumo" | "hospital" | "centro" | "externo" | "solicitud" | "donacion";
   id?: string; titulo: string; estado?: string | null; sub?: string | null; foto?: string | null; url?: string | null;
 };
 
@@ -17,9 +17,14 @@ const PILL: Record<string, string> = {
   solicitado: "bg-blue-100 text-blue-700", en_transito: "bg-amber-100 text-amber-800",
   entregado: "bg-green-100 text-green-700", cubierto: "bg-emerald-100 text-emerald-700", cancelado: "bg-gray-200 text-gray-600",
   externo: "bg-violet-100 text-violet-700",
+  // solicitudes
+  abierta: "bg-blue-100 text-blue-700", en_progreso: "bg-amber-100 text-amber-800",
+  cubierta: "bg-emerald-100 text-emerald-700", cerrada: "bg-gray-200 text-gray-600",
+  // donaciones / entregas
+  pendiente: "bg-blue-100 text-blue-700", recibido: "bg-green-100 text-green-700", rechazado: "bg-red-100 text-red-700",
 };
-const ICONO = { persona: User, insumo: Pill, hospital: Building2, centro: Package, externo: User } as const;
-const TINTE = { persona: "bg-rose-100 text-rose-500", insumo: "bg-amber-100 text-amber-600", hospital: "bg-primary/10 text-primary", centro: "bg-emerald-100 text-emerald-600", externo: "bg-violet-100 text-violet-600" } as const;
+const ICONO = { persona: User, insumo: Pill, hospital: Building2, centro: Package, externo: User, solicitud: FileText, donacion: HeartHandshake } as const;
+const TINTE = { persona: "bg-rose-100 text-rose-500", insumo: "bg-amber-100 text-amber-600", hospital: "bg-primary/10 text-primary", centro: "bg-emerald-100 text-emerald-600", externo: "bg-violet-100 text-violet-600", solicitud: "bg-primary/10 text-primary", donacion: "bg-fuchsia-100 text-fuchsia-600" } as const;
 
 export function ResultadoCards({ resultados }: { resultados: ResultadoChat[] }) {
   const { puede, rol } = useRol();
@@ -28,6 +33,11 @@ export function ResultadoCards({ resultados }: { resultados: ResultadoChat[] }) 
 
   function abrir(r: ResultadoChat) {
     if (r.tipo === "externo") { if (r.url) window.open(r.url, "_blank", "noreferrer"); return; }
+    // Solicitudes/donaciones: tarjeta con enlace directo a SU página de estado (navega en la app).
+    if (r.tipo === "solicitud" || r.tipo === "donacion") {
+      if (r.url) { if (/^https?:\/\//.test(r.url)) window.open(r.url, "_blank", "noreferrer"); else window.location.assign(r.url); }
+      return;
+    }
     if (!r.id) return;
     // Detalle de paciente = sensible: solo personal autorizado.
     if (r.tipo === "persona" && !(rol === "admin" || puede("personas"))) {

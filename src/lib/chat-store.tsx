@@ -131,7 +131,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setMsgs((m) => [
       ...m,
       ...files.map((f) => ({ rol: "user" as const, texto: "", archivo: { nombre: f.name, formato: (f.name.split(".").pop() || "archivo").toUpperCase() } })),
-      { rol: "bot" as const, texto: "Recibido 📄 — lo estoy leyendo. Revisa el panel de carga abajo para confirmar y guardar." },
+      { rol: "bot" as const, texto: "Recibido 📄 — lo estoy leyendo. Aquí abajo verás una tarjeta con lo que extraje: revísala y pulsa **Guardar**. Cuando la guardes, quedará registrada y la verás en /mis-cargas." },
     ]);
     window.dispatchEvent(new CustomEvent("avi-cargar", { detail: files }));
   }
