@@ -11,7 +11,8 @@
 -- Código corto + público para CADA donación (oferta): id estable y compartible
 -- (/donaciones/<codigo>). Lo rellena la app al crear; este backfill cubre las previas.
 alter table ofertas add column if not exists codigo text;
-update ofertas set codigo = upper(substr(replace(id::text, '-', ''), 1, 6)) where codigo is null;
+-- Backfill con 10 hex (≈1e12 combinaciones) para evitar colisiones al crear el índice único.
+update ofertas set codigo = upper(substr(replace(id::text, '-', ''), 1, 10)) where codigo is null;
 create unique index if not exists idx_ofertas_codigo on ofertas (codigo);
 
 -- Modelo de datos como lo necesita el personal médico: separar presentación, unidad

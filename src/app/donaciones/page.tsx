@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getSesion } from "@/lib/supabase/server";
 import { misOfertas } from "@/app/actions/ofertas";
-import { listarEntregasPorRecibir } from "@/app/actions/entregas";
+import { listarEntregasPorRecibir, listarEntregasConfirmadas } from "@/app/actions/entregas";
 import { MisDonaciones } from "@/components/MisDonaciones";
 import { Button } from "@/components/ui/button";
 
@@ -10,9 +10,10 @@ export const dynamic = "force-dynamic";
 // Módulo unificado de Donaciones: donar + mis donaciones + (personal) recepción.
 export default async function DonacionesHub() {
   const sesion = await getSesion();
-  const [ofertas, porRecibir] = await Promise.all([
+  const [ofertas, porRecibir, confirmadas] = await Promise.all([
     sesion ? misOfertas() : Promise.resolve([]),
     sesion ? listarEntregasPorRecibir() : Promise.resolve([]),
+    sesion ? listarEntregasConfirmadas() : Promise.resolve([]),
   ]);
 
   return (
@@ -49,6 +50,30 @@ export default async function DonacionesHub() {
                   </span>
                 </span>
                 <span className="shrink-0 text-xs font-semibold rounded px-2 py-1 bg-amber-100 text-amber-700">{e.estado === "en_transito" ? "en camino" : "pendiente"}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {confirmadas.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg font-semibold">✅ Recibidas en mi centro ({confirmadas.length})</h2>
+          <div className="flex flex-col gap-2">
+            {confirmadas.slice(0, 10).map((e: any) => (
+              <Link key={e.id} href={`/donaciones/${e.codigo}`} className="rounded-xl border p-3 flex items-center gap-3 hover:bg-muted">
+                {e.foto_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={e.foto_url} alt="" className="size-12 rounded-lg object-cover shrink-0 border" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium truncate">{e.ofertas?.descripcion ?? "Donación"}{e.cantidad ? ` · ${e.cantidad}` : ""}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {e.insumos?.nombre ? `${e.insumos.nombre} · ` : ""}{e.recibido_por_nombre ? `por ${e.recibido_por_nombre}` : ""}
+                    {e.recibido_at ? ` · ${new Date(e.recibido_at).toLocaleDateString("es-VE")}` : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">{e.codigo}</span>
               </Link>
             ))}
           </div>
