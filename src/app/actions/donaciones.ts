@@ -151,6 +151,23 @@ export async function donarNecesidad(insumoId: string, datos: { cantidad: number
   if (error) return { ok: false as const, error: error.message };
   await registrarLog("donar", "insumo", insumoId, { cantidad: cant, donante: datos.nombre.trim() });
 
+  // Update/Save user profile contact details if logged in
+  if (sc.uid) {
+    const { data: perfil } = await a.from("profiles").select("nombre, telefono, email").eq("id", sc.uid).maybeSingle();
+    if (perfil) {
+      const updates: any = {};
+      const newNombre = datos.nombre.trim();
+      const newTelefono = datos.telefono?.trim() || null;
+      const newEmail = datos.email?.trim() || null;
+      if (newNombre && newNombre !== perfil.nombre) updates.nombre = newNombre;
+      if (newTelefono && newTelefono !== perfil.telefono) updates.telefono = newTelefono;
+      if (newEmail && newEmail !== perfil.email) updates.email = newEmail;
+      if (Object.keys(updates).length > 0) {
+        await a.from("profiles").update(updates).eq("id", sc.uid);
+      }
+    }
+  }
+
   // Crear la correspondiente fila de tracking en entregas
   const { codigoUnico } = await import("@/app/actions/entregas");
   const codigo = await codigoUnico(a);
@@ -284,4 +301,66 @@ export async function lugaresEntrega(hospitalId: string): Promise<LugarEntrega[]
     tipo: hosp.tipo ?? "hospital", contacto: hosp.contacto ?? null, distanciaKm: 0, esHospital: true,
   });
   return candidatos;
+}
+
+export async function guardarEdicionDonacion(
+  id: string,
+  tipoOrigen: "oferta" | "donacion",
+  datos: { cantidad: number; nombre: string; telefono?: string; email?: string; lugarEntregaId?: string }
+) {
+  const cant = Math.floor(Number(datos.cantidad));
+  if (!Number.isFinite(cant) || cant <= 0) return { ok: false as const, error: "Indica una cantidad válida." };
+  if (!datos.nombre?.trim()) return { ok: false as const, error: "Escribe tu nombre." };
+
+  const a = createAdminClient();
+  const sc = await getScope();
+
+  if (tipoOrigen === "donacion") {
+    const { data: d } = await a.from("donaciones").select("donante_user").eq("id", id).single();
+    if (!d) return { ok: false as const, error: "Donación no encontrada." };
+    const propio = d.donante_user === sc.uid;
+    if (!sc.admin && !propio) return DENEGADO;
+
+    const { error } = await a.from("donaciones").update({
+      cantidad: cant,
+      donante_nombre: datos.nombre.trim(),
+      donante_telefono: datos.telefono?.trim() || null,
+      donante_email: datos.email?.trim() || null,
+    }).eq("id", id);
+    if (error) return { ok: false as const, error: error.message };
+
+    await a.from("entregas").update({
+      refugio_id: datos.lugarEntregaId || null,
+      cantidad: cant,
+      entrega_nombre: datos.nombre.trim(),
+      entrega_telefono: datos.telefono?.trim() || null,
+    }).eq("donacion_id", id);
+
+    await registrarLog("editar", "donacion", id, { cantidad: cant });
+  } else {
+    // Es una oferta (wizard)
+    const { data: of } = await a.from("ofertas").select("usuario_oferente_id").eq("id", id).single();
+    if (!of) return { ok: false as const, error: "Donación no encontrada." };
+    const propio = of.usuario_oferente_id === sc.uid;
+    if (!sc.admin && !propio) return DENEGADO;
+
+    const { error } = await a.from("ofertas").update({
+      cantidad: cant,
+      contacto_nombre: datos.nombre.trim(),
+      contacto_telefono: datos.telefono?.trim() || null,
+      refugio_id: datos.lugarEntregaId || null,
+    }).eq("id", id);
+    if (error) return { ok: false as const, error: error.message };
+
+    await a.from("entregas").update({
+      refugio_id: datos.lugarEntregaId || null,
+      cantidad: cant,
+      entrega_nombre: datos.nombre.trim(),
+      entrega_telefono: datos.telefono?.trim() || null,
+    }).eq("oferta_id", id);
+
+    await registrarLog("editar", "oferta", id, { cantidad: cant });
+  }
+
+  return { ok: true as const };
 }

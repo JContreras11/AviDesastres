@@ -18,14 +18,23 @@ export async function listarCentrosEntrega() {
   return data ?? [];
 }
 
-// Resuelve identidad de contacto (perfil si hay sesión; teléfono obligatorio si anónimo).
-// Muta `limpio` con usuario_oferente_id/contacto_*. Devuelve error si falta el teléfono anónimo.
 async function resolverIdentidad(sc: Awaited<ReturnType<typeof getScope>>, a: any, limpio: Record<string, any>) {
   limpio.usuario_oferente_id = sc.uid ?? null;
   if (sc.uid) {
     const { data: perfil } = await a.from("profiles").select("nombre, telefono").eq("id", sc.uid).maybeSingle();
-    limpio.contacto_nombre = perfil?.nombre ?? limpio.contacto_nombre ?? null;
-    limpio.contacto_telefono = perfil?.telefono ?? limpio.contacto_telefono ?? null;
+    const nombre = (limpio.contacto_nombre?.trim() || perfil?.nombre || "").trim();
+    const telefono = (limpio.contacto_telefono?.trim() || perfil?.telefono || "").trim();
+    
+    limpio.contacto_nombre = nombre || null;
+    limpio.contacto_telefono = telefono || null;
+
+    // Save/update user profile contact details
+    const updates: any = {};
+    if (nombre && nombre !== perfil?.nombre) updates.nombre = nombre;
+    if (telefono && telefono !== perfil?.telefono) updates.telefono = telefono;
+    if (Object.keys(updates).length > 0) {
+      await a.from("profiles").update(updates).eq("id", sc.uid);
+    }
   } else if (!limpio.contacto_telefono?.trim()) {
     return "Deja un teléfono de contacto.";
   }
@@ -220,7 +229,7 @@ export async function misOfertas() {
   
   // 1) Fetch wizard-created donations (ofertas)
   const { data: ofertasData } = await a.from("ofertas")
-    .select("id,codigo,tipo,descripcion,cantidad,area,contacto_nombre,estatus,created_at,refugio_id,hospitales:refugio_id(nombre,ubicacion),entregas(codigo,estado,recibido_at)")
+    .select("id,codigo,tipo,descripcion,cantidad,area,contacto_nombre,contacto_telefono,estatus,created_at,refugio_id,hospitales:refugio_id(nombre,ubicacion),entregas(codigo,estado,recibido_at,refugio_id)")
     .eq("usuario_oferente_id", sc.uid).order("created_at", { ascending: false });
 
   // 2) Fetch direct-need donations (donaciones)
@@ -230,11 +239,15 @@ export async function misOfertas() {
       cantidad,
       estado,
       donante_nombre,
+      donante_telefono,
+      donante_email,
       created_at,
       insumos:insumo_id (
+        id,
         nombre,
         area,
         hospitales:hospital_id (
+          id,
           nombre,
           ubicacion
         )
@@ -242,11 +255,32 @@ export async function misOfertas() {
       entregas:entregas!donacion_id (
         codigo,
         estado,
-        recibido_at
+        recibido_at,
+        refugio_id
       )
     `)
     .eq("donante_user", sc.uid)
     .order("created_at", { ascending: false });
+
+  const mappedOfertas = (ofertasData ?? []).map((o: any) => {
+    const ent = o.entregas?.[0] ?? null;
+    return {
+      ...o,
+      tipoOrigen: "oferta",
+      contacto_telefono: o.contacto_telefono ?? null,
+      contacto_email: null,
+      refugio_id: o.refugio_id ?? null,
+      insumo: {
+        id: null,
+        nombre: o.descripcion,
+        cantidad: null,
+        unidad: null,
+        presentacion: null,
+        hospital_id: o.refugio_id ?? null,
+        hospitales: o.hospitales
+      }
+    };
+  });
 
   const mappedDonaciones = (donacionesData ?? []).map((d: any) => {
     const ins = d.insumos ?? {};
@@ -259,20 +293,33 @@ export async function misOfertas() {
 
     return {
       id: d.id,
+      tipoOrigen: "donacion",
       codigo: ent?.codigo ?? null,
       tipo: "insumo_fisico",
       descripcion: ins.nombre ?? "Insumo",
       cantidad: d.cantidad,
       area: ins.area ?? null,
       contacto_nombre: d.donante_nombre ?? null,
+      contacto_telefono: d.donante_telefono ?? null,
+      contacto_email: d.donante_email ?? null,
       estatus,
       created_at: d.created_at,
       hospitales: hosp,
+      refugio_id: ent?.refugio_id ?? null,
+      insumo: {
+        id: ins.id,
+        nombre: ins.nombre,
+        cantidad: null,
+        unidad: null,
+        presentacion: null,
+        hospital_id: hosp?.id ?? null,
+        hospitales: hosp
+      },
       entregas: d.entregas ?? []
     };
   });
 
-  const combined = [...(ofertasData ?? []), ...mappedDonaciones].sort(
+  const combined = [...mappedOfertas, ...mappedDonaciones].sort(
     (x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime()
   );
   return combined;
