@@ -54,6 +54,7 @@ export function MisDonaciones({ inicial }: { inicial: Oferta[] }) {
         const cancelable = o.estatus !== "entregado" && o.estatus !== "cancelado";
         // FIX 10: identifica por NOMBRE (donante o "Anónimo") + rúbrica; id como subtexto copiable.
         const rubrica = rubricaDonacion(o.tipo, `${o.descripcion} ${o.area ?? ""}`);
+        const esVol = o.tipo === "personal_humano";
         const codigo = o.entregas?.[0]?.codigo ?? o.codigo ?? null;
         return (
           <div key={o.id} className="rounded-xl border p-4 flex flex-col gap-2">
@@ -74,7 +75,7 @@ export function MisDonaciones({ inicial }: { inicial: Oferta[] }) {
               {o.cantidad ? <span> · {o.cantidad} und.</span> : null}
             </p>
             {o.hospitales?.nombre && (
-              <p className="text-sm text-muted-foreground">📦 Entrega en: {o.hospitales.nombre}
+              <p className="text-sm text-muted-foreground">{esVol ? "🩺 Ayudarás en:" : "📦 Entrega en:"} {o.hospitales.nombre}
                 {o.hospitales.ubicacion ? ` — ${o.hospitales.ubicacion}` : ""}</p>
             )}
             {(() => {
@@ -83,8 +84,8 @@ export function MisDonaciones({ inicial }: { inicial: Oferta[] }) {
               if (!codigo) return null;
               return (
                 <div className="flex items-center justify-between gap-2 text-xs">
-                  <Link href={`/donaciones/${codigo}`} className="text-primary underline">
-                    🔗 Seguir entrega · <span className="font-mono">{codigo}</span>
+                  <Link href={`/donaciones/${codigo}`} className="text-primary underline font-medium">
+                    🔗 {esVol ? "Ver voluntariado" : "Ver donación"} →
                   </Link>
                   {ent?.estado === "recibido" && <span className="text-emerald-600 font-medium">✅ recibida</span>}
                 </div>

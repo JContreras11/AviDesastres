@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getDonacionPublica } from "@/app/actions/entregas";
 import { CompartirDonacion } from "@/components/donaciones/CompartirDonacion";
 import { CopyableText } from "@/components/donaciones/CopyableText";
+import { MapaRuta } from "@/components/refugios/MapaRuta";
 import { rubricaDonacion, emojiRubrica, nombreDonacion } from "../rubrica";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,8 @@ export default async function EstadoDonacion({ params }: { params: Promise<{ cod
   // FIX 10: nombre del donante + rúbrica; código como subtexto copiable (también el nombre).
   const rubrica = rubricaDonacion(d.oferta?.tipo, `${d.oferta?.descripcion ?? ""} ${d.area ?? ""}`);
   const donante = nombreDonacion(d.oferta?.contacto_nombre ?? null);
+  // FIX 5: voluntariado usa lenguaje de PRESENTARSE, no de entrega física.
+  const esVol = d.oferta?.tipo === "personal_humano";
 
   return (
     <main className="min-h-screen px-4 py-8 max-w-lg mx-auto w-full flex flex-col gap-5">
@@ -61,12 +64,31 @@ export default async function EstadoDonacion({ params }: { params: Promise<{ cod
       )}
 
       <section className="rounded-2xl border p-4 flex flex-col gap-2 text-sm">
-        {d.oferta && <p><span className="text-muted-foreground">Qué:</span> <span className="font-medium capitalize">{d.oferta.descripcion}</span>{d.cantidad ? ` · ${d.cantidad}` : ""}</p>}
+        {d.oferta && <p><span className="text-muted-foreground">{esVol ? "Ofrecimiento:" : "Qué:"}</span> <span className="font-medium capitalize">{d.oferta.descripcion}</span>{d.cantidad ? ` · ${d.cantidad}` : ""}</p>}
         {d.insumo?.nombre && <p><span className="text-muted-foreground">Cubre necesidad:</span> <span className="font-medium">{d.insumo.nombre}</span>{d.area ? ` · ${d.area}` : ""}</p>}
         {d.hospital?.nombre && <p><span className="text-muted-foreground">Hospital:</span> <span className="font-medium">{d.hospital.nombre}</span>{d.hospital.ubicacion ? ` — ${d.hospital.ubicacion}` : ""}</p>}
-        {d.refugio?.nombre && <p><span className="text-muted-foreground">Punto de entrega:</span> {d.refugio.nombre}{d.refugio.ubicacion ? ` — ${d.refugio.ubicacion}` : ""}</p>}
         {d.oferta?.created_at && <p className="text-xs text-muted-foreground">Registrada el {new Date(d.oferta.created_at).toLocaleDateString("es-VE")}</p>}
       </section>
+
+      {/* FIX 7: lugar seleccionado + mapa + Cómo llegar (mismo trato para donación física y voluntariado). */}
+      {d.refugio?.nombre && (
+        <section className="rounded-2xl border p-4 flex flex-col gap-3">
+          <div>
+            <p className="text-sm text-muted-foreground">{esVol ? "Dónde vas a ayudar" : "Punto de entrega"}</p>
+            <p className="font-medium">{esVol ? "🩺" : "📦"} {d.refugio.nombre}{d.refugio.ubicacion ? ` — ${d.refugio.ubicacion}` : ""}</p>
+          </div>
+          {d.refugio.gps_lat != null && d.refugio.gps_lng != null ? (
+            <>
+              <MapaRuta destino={{ nombre: d.refugio.nombre, gps_lat: d.refugio.gps_lat, gps_lng: d.refugio.gps_lng }} />
+              <a href={`https://www.google.com/maps/dir/?api=1&destination=${d.refugio.gps_lat},${d.refugio.gps_lng}`} target="_blank" rel="noreferrer"
+                className="text-center rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-muted">🧭 Cómo llegar</a>
+            </>
+          ) : (
+            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${d.refugio.nombre} ${d.refugio.ubicacion ?? ""} Venezuela`)}`} target="_blank" rel="noreferrer"
+              className="text-center rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-muted">🗺️ Ver en el mapa</a>
+          )}
+        </section>
+      )}
 
       {/* Evidencia de la recepción (trazabilidad cerrada) */}
       {d.estado === "recibido" && (
@@ -94,7 +116,7 @@ export default async function EstadoDonacion({ params }: { params: Promise<{ cod
             🏥 ¿Eres del hospital? Confirmar recepción
           </Link>
         )}
-        <Link href="/donaciones/crear" className="text-center rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-muted">💜 Donar algo más</Link>
+        <Link href="/donaciones/crear" className="text-center rounded-lg border px-3 py-2.5 text-sm font-medium hover:bg-muted">{esVol ? "🩺 Ofrecer más ayuda" : "💜 Donar algo más"}</Link>
         <Link href="/donaciones" className="text-center text-sm text-primary underline">Ir a mis donaciones</Link>
       </div>
       <p className="text-center text-xs text-muted-foreground">AviHelp — trazabilidad de la ayuda.</p>

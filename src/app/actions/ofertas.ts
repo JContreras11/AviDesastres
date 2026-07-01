@@ -14,7 +14,7 @@ const CAMPOS = ["tipo", "descripcion", "cantidad", "ubicacion_actual", "contacto
 export async function listarCentrosEntrega() {
   const a = createAdminClient();
   const { data } = await a.from("hospitales")
-    .select("id,nombre,ubicacion,gps_lat,gps_lng").eq("tipo", "refugio").order("nombre");
+    .select("id,nombre,ubicacion,gps_lat,gps_lng").in("tipo", ["refugio", "centro"]).order("nombre");
   return data ?? [];
 }
 
@@ -35,7 +35,7 @@ async function resolverIdentidad(sc: Awaited<ReturnType<typeof getScope>>, a: an
 // Valida que refugio_id sea un centro de acopio/refugio real. Devuelve el centro o un error.
 async function resolverCentro(a: any, refugioId: any): Promise<{ centro?: { id: string; nombre: string }; error?: string }> {
   if (!refugioId) return { error: "Elige el centro de acopio o refugio donde entregarás." };
-  const { data: centro } = await a.from("hospitales").select("id, nombre").eq("id", refugioId).eq("tipo", "refugio").maybeSingle();
+  const { data: centro } = await a.from("hospitales").select("id, nombre").eq("id", refugioId).in("tipo", ["refugio", "centro"]).maybeSingle();
   if (!centro) return { error: "El centro de entrega elegido no es válido." };
   return { centro };
 }
