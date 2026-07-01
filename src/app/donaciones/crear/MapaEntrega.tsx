@@ -42,6 +42,7 @@ export function MapaEntrega({
   const markersRef = useRef<Record<string, any>>({});
   const userMarkerRef = useRef<any>(null);
   const lineRef = useRef<any>(null);
+  const roRef = useRef<any>(null);
   const onToggleRef = useRef(onToggle);
   onToggleRef.current = onToggle;
   const selRef = useRef<string[]>(selectedIds);
@@ -72,8 +73,16 @@ export function MapaEntrega({
       }
       if (conCoord.length) map.fitBounds(L.latLngBounds(conCoord.map((p) => [p.gps_lat as number, p.gps_lng as number])).pad(0.25));
       mapRef.current = map;
+      // FIX 6: recalcula el tamaño tras montar (el contenedor puede terminar su layout
+      // después) y ante cualquier resize, para que las teselas no queden a medio pintar.
+      const fix = () => { try { map.invalidateSize(); } catch { /* mapa removido */ } };
+      setTimeout(fix, 60); setTimeout(fix, 300);
+      if (typeof ResizeObserver !== "undefined" && elRef.current) {
+        roRef.current = new ResizeObserver(fix);
+        roRef.current.observe(elRef.current);
+      }
     })();
-    return () => { cancelado = true; mapRef.current?.remove(); mapRef.current = null; markersRef.current = {}; userMarkerRef.current = null; lineRef.current = null; };
+    return () => { cancelado = true; roRef.current?.disconnect?.(); roRef.current = null; mapRef.current?.remove(); mapRef.current = null; markersRef.current = {}; userMarkerRef.current = null; lineRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [centros.map((c) => c.id).join("|")]);
 

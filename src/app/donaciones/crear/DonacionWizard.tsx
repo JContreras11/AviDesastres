@@ -50,7 +50,7 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
   const [enviando, setEnviando] = useState(false);
   const [yaAutenticado, setYaAutenticado] = useState(autenticado);
   const [pwOpen, setPwOpen] = useState(false);
-  const [ok, setOk] = useState<{ codigos: string[]; matches: MatchSugerido[]; centro: Centro | null } | null>(null);
+  const [ok, setOk] = useState<{ codigos: string[]; matches: MatchSugerido[]; centro: Centro | null; centros: Centro[]; tipo: "insumo_fisico" | "personal_humano"; donante: string } | null>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const audRef = useRef<HTMLInputElement>(null);
   const imgRef2 = useRef<HTMLInputElement>(null);
@@ -62,6 +62,9 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
   }, [tipo]);
   const [idx, setIdx] = useState(0);
   const paso = pasos[Math.min(idx, pasos.length - 1)];
+  // FIX 5: voluntariado (personal de salud que se ofrece) usa lenguaje de PRESENTARSE,
+  // no de entrega física. Ramificamos las etiquetas en todo el flujo.
+  const esVol = tipo === "personal_humano";
 
   const hospitalesRelacionados = useMemo(() => {
     const ids = new Set<string>();
@@ -169,7 +172,9 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
     setEnviando(false);
     if (!r.ok) { toast.error((r as any).error); return; }
     const codigos: string[] = (r as any).codigos ?? ((r as any).codigo ? [(r as any).codigo] : []);
-    setOk({ codigos, matches: (r as any).matches ?? [], centro: centroPrimario });
+    const seleccionados = centros.filter((c) => refugioIds.includes(c.id));
+    const donanteNombre = contacto.anonimo ? "Anónimo" : (yaAutenticado ? (nombre ?? "") : contacto.nombre);
+    setOk({ codigos, matches: (r as any).matches ?? [], centro: centroPrimario, centros: seleccionados, tipo: tipo!, donante: donanteNombre });
   }
 
   // FIX 2: si es anónimo y dejó email+teléfono, ofrece crear cuenta/entrar ANTES de registrar.
@@ -318,11 +323,11 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
           </div>
         )}
 
-        {/* FIX 3/4/5: paso ÚNICO de entrega — ubicación + mapa + recomendar cercano + elegir ≥1. */}
+        {/* FIX 3/4/5: paso ÚNICO de entrega/presentación — ubicación + mapa + recomendar cercano + elegir ≥1. */}
         {paso === "entrega" && (
           <div className="flex flex-col gap-3">
-            <p className="text-base font-semibold">¿Dónde la entregas? <HelpTip label="¿Dónde entrego?">Elige uno o varios centros de acopio o refugios donde dejar tu donación. El más cercano a ti será el recomendado.</HelpTip></p>
-            <p className="text-sm text-muted-foreground">Usa tu ubicación para ver los centros más cercanos. Elige uno o varios; el más cercano será tu punto recomendado.</p>
+            <p className="text-base font-semibold">{esVol ? "¿Dónde vas a ayudar?" : "¿Dónde la entregas?"} <HelpTip label={esVol ? "¿Dónde ayudo?" : "¿Dónde entrego?"}>{esVol ? "Elige uno o varios centros o refugios donde puedes presentarte a ayudar. El más cercano a ti será el recomendado." : "Elige uno o varios centros de acopio o refugios donde dejar tu donación. El más cercano a ti será el recomendado."}</HelpTip></p>
+            <p className="text-sm text-muted-foreground">{esVol ? "Usa tu ubicación para ver los centros más cercanos. Elige uno o varios donde harás voluntariado; el más cercano será tu punto recomendado." : "Usa tu ubicación para ver los centros más cercanos. Elige uno o varios; el más cercano será tu punto recomendado."}</p>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={ubicarme} disabled={ubicando} className="flex-1">
                 {ubicando ? "Ubicando…" : pos ? "✅ Ubicación lista — actualizar" : "📍 Usar mi ubicación"}
@@ -335,7 +340,7 @@ export default function DonacionWizard({ autenticado, nombre, centros, hospitalC
             {hospitalesRelacionados.size > 0 && (
               <p className="text-xs rounded-lg bg-primary/5 border px-3 py-2">Relacionaste tu donación con {hospitalesRelacionados.size} hospital(es). Elige un centro de acopio o refugio cercano para dejarla.</p>
             )}
-            <div className="h-64 rounded-xl border overflow-hidden">
+            <div className="relative z-0 isolate h-64 rounded-xl border overflow-hidden">
               <MapaEntrega centros={pinsMapa} userPos={pos} selectedIds={refugioIds} onToggle={toggleRefugio} routeTo={routePin} />
             </div>
             <SearchableSelect
@@ -443,6 +448,13 @@ const RECOMENDACIONES = [
   { emoji: "🥫", txt: "La comida, mejor no perecedera y sin abrir." },
 ];
 
+// FIX 5: recomendaciones para VOLUNTARIADO (personal de salud que se presenta a ayudar).
+const RECOMENDACIONES_VOL = [
+  { emoji: "🪪", txt: "Lleva tu identificación y, si tienes, tu credencial o título profesional." },
+  { emoji: "🕑", txt: "Confirma el horario con el centro antes de ir y sé puntual." },
+  { emoji: "📞", txt: "Guarda el contacto del lugar por si necesitas coordinar tu llegada." },
+];
+
 // FIX 6/7 — confirmación: mismo mapa + ruta (col 1) y resumen + recomendaciones + agregar más (col 2).
 function Confirmacion({
   tipo, items, descripcion, centro, neces, pins, userPos, routePin, refugioIds, rubrica, donante, extrayendo, onFoto, onAudio, onTexto,
@@ -453,17 +465,34 @@ function Confirmacion({
   onFoto: () => void; onAudio: () => void; onTexto: (t: string) => void;
 }) {
   const [txt, setTxt] = useState("");
+  const esVol = tipo === "personal_humano";
+  // FIX 5/7: voluntario elige VARIOS lugares donde ayudar → muéstralos TODOS como activos.
+  const seleccionados = pins.filter((p) => refugioIds.includes(p.id));
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-base font-semibold">Confirma tu donación</p>
+      <p className="text-base font-semibold">{esVol ? "Confirma tu voluntariado" : "Confirma tu donación"}</p>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
         {/* Columna mapa (desktop 6) */}
         <div className="lg:col-span-6 flex flex-col gap-2">
-          <div className="h-56 rounded-xl border overflow-hidden">
+          {/* FIX 6: relative z-0 isolate contiene el z-index de leaflet (no tapa el modal). */}
+          <div className="relative z-0 isolate h-56 rounded-xl border overflow-hidden">
             <MapaEntrega centros={pins} userPos={userPos} selectedIds={refugioIds} onToggle={() => {}} routeTo={routePin} />
           </div>
-          {centro && (
-            <p className="text-sm rounded-lg bg-primary/5 border px-3 py-2">📦 Lleva tu donación a: <span className="font-medium">{centro.nombre}</span>{centro.ubicacion ? ` — ${centro.ubicacion}` : ""}{refugioIds.length > 1 ? ` (o cualquiera de los ${refugioIds.length} seleccionados)` : ""}</p>
+          {esVol ? (
+            seleccionados.length > 0 && (
+              <div className="text-sm rounded-lg bg-primary/5 border px-3 py-2">
+                <p className="font-medium">🩺 {seleccionados.length > 1 ? "Centros donde harás voluntariado:" : "Preséntate en:"}</p>
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  {seleccionados.map((c) => (
+                    <li key={c.id}>✅ <span className="font-medium">{c.nombre}</span>{c.ubicacion ? ` — ${c.ubicacion}` : ""}</li>
+                  ))}
+                </ul>
+              </div>
+            )
+          ) : (
+            centro && (
+              <p className="text-sm rounded-lg bg-primary/5 border px-3 py-2">📦 Lleva tu donación a: <span className="font-medium">{centro.nombre}</span>{centro.ubicacion ? ` — ${centro.ubicacion}` : ""}{refugioIds.length > 1 ? ` (o cualquiera de los ${refugioIds.length} seleccionados)` : ""}</p>
+            )
           )}
         </div>
         {/* Columna resumen + recomendaciones (desktop 6) */}
@@ -491,8 +520,8 @@ function Confirmacion({
           )}
 
           <div className="rounded-xl border bg-primary/5 p-3 flex flex-col gap-1.5">
-            <p className="text-sm font-semibold">Cómo llevar tus cosas:</p>
-            {RECOMENDACIONES.map((r) => (
+            <p className="text-sm font-semibold">{esVol ? "Antes de presentarte:" : "Cómo llevar tus cosas:"}</p>
+            {(esVol ? RECOMENDACIONES_VOL : RECOMENDACIONES).map((r) => (
               <p key={r.txt} className="text-sm flex gap-2"><span>{r.emoji}</span><span className="text-muted-foreground">{r.txt}</span></p>
             ))}
           </div>
@@ -518,35 +547,51 @@ function Confirmacion({
   );
 }
 
-// FIX 8 — pantalla de éxito GRANDE, centrada, sin borde. Dice DÓNDE entregar, ofrece
-// agregar más y deja elegir entre ir al estado o quedarse.
-function Exito({ ok, onOtra, onIr }: { ok: { codigos: string[]; matches: MatchSugerido[]; centro: Centro | null }; onOtra: () => void; onIr: (codigo: string) => void }) {
+// FIX 5/7 — pantalla de éxito GRANDE, centrada. Identifica por NOMBRE/tipo (no por el
+// código, que queda como texto secundario copiable) y ramifica el lenguaje: donación
+// física = "Lleva tus cosas a…"; voluntariado = "Preséntate en…". Muestra TODOS los
+// centros seleccionados (el voluntario puede elegir varios).
+function Exito({ ok, onOtra, onIr }: { ok: { codigos: string[]; matches: MatchSugerido[]; centro: Centro | null; centros: Centro[]; tipo: "insumo_fisico" | "personal_humano"; donante: string }; onOtra: () => void; onIr: (codigo: string) => void }) {
   const uno = ok.codigos.length === 1 ? ok.codigos[0] : null;
+  const esVol = ok.tipo === "personal_humano";
+  const lugares = ok.centros.length ? ok.centros : (ok.centro ? [ok.centro] : []);
+  const rubrica = rubricaDonacion(ok.tipo);
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-xl text-center flex flex-col items-center gap-4">
         <Logo size={72} />
         <h1 className="text-3xl sm:text-4xl font-bold">¡Gracias! 💜</h1>
         <p className="text-base text-muted-foreground max-w-md">
-          Registramos {ok.codigos.length > 1 ? `tus ${ok.codigos.length} donaciones` : "tu donación"}.
+          {esVol
+            ? "Registramos tu ofrecimiento de voluntariado. Un coordinador te contactará."
+            : `Registramos ${ok.codigos.length > 1 ? `tus ${ok.codigos.length} donaciones` : "tu donación"}.`}
         </p>
-        {ok.centro && (
+        {lugares.length > 0 && (
           <div className="w-full max-w-md rounded-2xl bg-primary/5 p-5">
-            <p className="text-sm text-muted-foreground">Lleva tus cosas a:</p>
-            <p className="text-xl font-bold mt-1">📦 {ok.centro.nombre}</p>
-            {ok.centro.ubicacion && <p className="text-sm text-muted-foreground mt-0.5">📍 {ok.centro.ubicacion}</p>}
-            {ok.centro.gps_lat != null && ok.centro.gps_lng != null && (
-              <a href={`https://www.google.com/maps?q=${ok.centro.gps_lat},${ok.centro.gps_lng}`} target="_blank" rel="noreferrer"
-                className="inline-block mt-3 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted">🗺️ Cómo llegar</a>
-            )}
+            <p className="text-sm text-muted-foreground">{esVol ? (lugares.length > 1 ? "Preséntate en cualquiera de estos centros:" : "Preséntate en:") : "Lleva tus cosas a:"}</p>
+            <div className="mt-2 flex flex-col gap-3">
+              {lugares.map((c) => (
+                <div key={c.id} className="flex flex-col items-center">
+                  <p className="text-lg font-bold">{esVol ? "🩺" : "📦"} {c.nombre}</p>
+                  {c.ubicacion && <p className="text-sm text-muted-foreground mt-0.5">📍 {c.ubicacion}</p>}
+                  {c.gps_lat != null && c.gps_lng != null && (
+                    <a href={`https://www.google.com/maps/dir/?api=1&destination=${c.gps_lat},${c.gps_lng}`} target="_blank" rel="noreferrer"
+                      className="inline-block mt-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted">🧭 Cómo llegar</a>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {ok.codigos.length > 0 && (
           <div className="w-full max-w-md flex flex-col gap-2">
             {ok.codigos.map((c) => (
               <div key={c} className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
-                <CopyableText value={c} label={`Donación ${c}`} mono />
-                <Link href={`/donaciones/${c}`} className="text-primary shrink-0">Ver estado →</Link>
+                <span className="min-w-0 text-left">
+                  <span className="font-medium flex items-center gap-1.5"><span>{emojiRubrica(rubrica)}</span>{nombreDonacion(ok.donante)}</span>
+                  <span className="block text-xs text-muted-foreground">{rubrica} · <CopyableText value={c} mono className="text-[11px]" /></span>
+                </span>
+                <Link href={`/donaciones/${c}`} className="text-primary shrink-0">{esVol ? "Ver voluntariado →" : "Ver donación →"}</Link>
               </div>
             ))}
           </div>
@@ -563,8 +608,8 @@ function Exito({ ok, onOtra, onIr }: { ok: { codigos: string[]; matches: MatchSu
           {uno && <CompartirDonacion codigo={uno} />}
           <p className="text-sm text-muted-foreground mt-1">¿Qué quieres hacer ahora?</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {uno && <Button onClick={() => onIr(uno)}>Ver estado de mi donación →</Button>}
-            <Button variant="outline" onClick={onOtra}>Donar algo más</Button>
+            {uno && <Button onClick={() => onIr(uno)}>{esVol ? "Ver mi voluntariado →" : "Ver mi donación →"}</Button>}
+            <Button variant="outline" onClick={onOtra}>{esVol ? "Ofrecer más ayuda" : "Donar algo más"}</Button>
           </div>
           <Link href="/donaciones" className="text-center text-sm text-primary underline mt-1">Quedarme — ir a mis donaciones</Link>
         </div>
