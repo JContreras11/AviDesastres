@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DonarBoton, type InsumoDonable } from "@/components/DonarInsumo";
 import { InsumoDialog } from "@/components/datos/Detalle";
+import { centrosDeHospital } from "@/app/actions/donaciones";
+import type { LugarEntrega } from "@/app/actions/donaciones";
 import { openAvi } from "@/lib/avi-bus";
 import { useRol } from "@/lib/rol";
 
@@ -49,20 +51,37 @@ const comoLlegar = (c: Centro) =>
 
 export function CentroModal({ centro, needs, onClose }: { centro: Centro; needs: Need[]; onClose: () => void }) {
   const { gestiona } = useRol();
-  const puedeGestionar = gestiona(centro.id);
+  const puedeGestionar = gestiona(centro.id, centro.id);
   const [verDonacionesDe, setVerDonacionesDe] = useState<string | null>(null);
+  // FIX 3: centros/refugios cercanos a este lugar (para el donante), por proximidad.
+  const [cercanos, setCercanos] = useState<LugarEntrega[]>([]);
   const info = tipoInfo(centro.tipo);
   const tieneCoord = centro.gps_lat != null && centro.gps_lng != null;
 
-  // Abre Avi con el flujo de solicitud prellenado para ESTE centro. El usuario puede
-  // añadir fotos/voz/documentos dentro del chat (patrón reutilizable openAvi).
-  function solicitarConAvi() {
-    openAvi({
-      flow: "solicitud",
-      message: `Quiero registrar una solicitud de insumos para ${centro.nombre}${centro.ubicacion ? ` (${centro.ubicacion})` : ""}. `,
-    });
+  useEffect(() => {
+    if (!centro.id) return;
+    centrosDeHospital(centro.id).then((c) => setCercanos(c ?? [])).catch(() => {});
+  }, [centro.id]);
+
+  // Abre Avi con el flujo adecuado prellenado para ESTE lugar. El usuario puede añadir
+  // fotos/voz/documentos dentro del chat (patrón reutilizable openAvi). FIX 4: rol-aware.
+  //  - Staff que gestiona el lugar -> SOLICITA un insumo (flow "solicitud").
+  //  - Donante (cualquier otro) -> DONA un insumo (flow "donacion").
+  function accionConAvi() {
+    if (puedeGestionar) {
+      openAvi({
+        flow: "solicitud",
+        message: `Quiero registrar una solicitud de insumos para ${centro.nombre}${centro.ubicacion ? ` (${centro.ubicacion})` : ""}. `,
+      });
+    } else {
+      openAvi({
+        flow: "donacion",
+        message: `Quiero donar un insumo para ${centro.nombre}${centro.ubicacion ? ` (${centro.ubicacion})` : ""}. `,
+      });
+    }
     onClose();
   }
+  const iconoLugar = (c: LugarEntrega) => tipoInfo(c.tipo).icon;
 
   return (
     <>
@@ -145,16 +164,34 @@ export function CentroModal({ centro, needs, onClose }: { centro: Centro; needs:
                 )}
               </div>
 
-              {/* Acciones rápidas a este centro (según rol). Crear solicitud SIEMPRE reutiliza Avi. */}
+              {/* Lugares de entrega cercanos a este lugar (para el donante), por proximidad. */}
+              {!puedeGestionar && cercanos.length > 0 && (
+                <div className="rounded-xl border p-3 flex flex-col gap-2">
+                  <p className="text-sm font-semibold">📦 Dónde entregar cerca</p>
+                  <div className="flex flex-col gap-1.5">
+                    {cercanos.slice(0, 4).map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="min-w-0">
+                          <span className="font-medium">{iconoLugar(c)} {c.nombre}</span>
+                          {c.ubicacion && <span className="block text-xs text-muted-foreground">📍 {c.ubicacion}</span>}
+                        </span>
+                        <a href={comoLlegar({ ...centro, ...c } as Centro)} target="_blank" rel="noreferrer" className="shrink-0 text-primary underline">mapa</a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Acción rol-aware (FIX 4): gestor -> solicitar; donante -> donar. Reutiliza Avi. */}
               <div className="rounded-xl border bg-primary/5 p-3 flex flex-col gap-2">
                 <p className="text-sm font-semibold">Acciones</p>
-                <Button onClick={solicitarConAvi} className="w-full h-11 text-base">
-                  ✍️ Pedir un insumo con Avi
+                <Button onClick={accionConAvi} className="w-full h-11 text-base">
+                  {puedeGestionar ? "✍️ Solicitar un insumo con Avi" : "💜 Donar un insumo"}
                 </Button>
                 <p className="text-xs text-muted-foreground">
                   {puedeGestionar
                     ? "Avi abre el formulario guiado: puedes dictar, escribir o subir una foto del pedido."
-                    : "Avi te ayuda a registrar lo que hace falta en este lugar (con foto, voz o texto)."}
+                    : "Avi te ayuda a registrar tu donación (con foto, voz o texto) y te dice dónde entregarla."}
                 </p>
               </div>
             </div>
