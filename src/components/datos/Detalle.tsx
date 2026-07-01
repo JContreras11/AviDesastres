@@ -151,6 +151,8 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
   const [montoDon, setMontoDon] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [tabActiva, setTabActiva] = useState<"donaciones" | "conciliacion" | "eventos">("donaciones");
+  
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (i || err) bodyRef.current?.focus(); }, [i, err]);
   // Solo gestiona (admin o miembro del hospital) puede editar/tracking/cubrir.
@@ -212,12 +214,34 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
     const r = await eliminarInsumo(id);
     if (r.ok) { toast.success("Eliminado"); onChanged(); onClose(); } else toast.error((r as any).error);
   }
+
+  function exportarCSV() {
+    if (!i || !donaciones.length) return;
+    const headers = ["Donante/Origen", "Cantidad", "Estado", "Fecha Registro"];
+    const rows = donaciones.map(d => [
+      d.centros_acopio?.nombre || d.donante_nombre || "Anónimo",
+      d.cantidad,
+      d.estado,
+      d.created_at ? new Date(d.created_at).toLocaleDateString("es-VE") : ""
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(","), ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `donaciones_${i.nombre.replace(/\s+/g, "_")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("CSV exportado.");
+  }
+
   const h = i?.hospitales;
   const maps = h && mapsUrl(h.gps_lat, h.gps_lng, h.nombre);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-lg">
+      <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-4xl w-full">
         <DialogHeader><DialogTitle className="text-xl pr-8">{i?.nombre ?? (err ? "Error" : "Cargando…")}</DialogTitle></DialogHeader>
         {err && (
           <div ref={bodyRef} tabIndex={-1} className="py-6 text-center text-sm text-muted-foreground outline-none">
@@ -227,130 +251,193 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
         )}
         {!i && !err && <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Cargando…</div>}
         {i && (
-          <div ref={bodyRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
-            {/* Solo personal con permiso edita. El público abierto ve la necesidad en solo-lectura. */}
-            {editable ? (<>
-              <Campo label="Nombre"><Input value={i.nombre ?? ""} onChange={(e) => setI({ ...i, nombre: e.target.value })} className={inputCls} /></Campo>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <Campo label="Cantidad"><Input value={i.cantidad ?? ""} inputMode="numeric" onChange={(e) => setI({ ...i, cantidad: e.target.value ? Number(e.target.value) : null })} className={inputCls} /></Campo>
-                <Campo label="Tipo">
-                  <select value={i.presentacion ?? ""} onChange={(e) => setI({ ...i, presentacion: e.target.value || null })} className={`${selectCls} capitalize`}>
-                    {PRESENTACIONES.map((s) => <option key={s} value={s}>{s || "—"}</option>)}
-                  </select>
-                </Campo>
-                <Campo label="Dosis/unidad"><Input value={i.unidad ?? ""} placeholder="mg, ml…" onChange={(e) => setI({ ...i, unidad: e.target.value })} className={inputCls} /></Campo>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Campo label="Área"><Input value={i.area ?? ""} placeholder="Trauma, Neonato…" onChange={(e) => setI({ ...i, area: e.target.value })} className={inputCls} /></Campo>
-                <Campo label="Estado">
-                  <select value={i.estado} onChange={(e) => setI({ ...i, estado: e.target.value })} className={`${selectCls} capitalize`}>
-                    {ESTADOS_INSUMO.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
-                  </select>
-                </Campo>
-              </div>
-              <Campo label="¿Para qué sirve?"><Input value={i.para_que_sirve ?? ""} onChange={(e) => setI({ ...i, para_que_sirve: e.target.value })} className={inputCls} /></Campo>
-              <Campo label="Alternativas si no se consigue"><Input value={i.alternativas ?? ""} onChange={(e) => setI({ ...i, alternativas: e.target.value })} className={inputCls} /></Campo>
-            </>) : (
-              <div className="flex flex-col gap-2 text-base">
-                <div className="flex flex-wrap items-center gap-2">
-                  {(i.cantidad || i.presentacion || i.unidad) && <span className="font-medium">{[i.cantidad, i.presentacion, i.unidad].filter(Boolean).join(" ")}</span>}
-                  {i.area && <span className="rounded-full bg-muted px-2 py-0.5 text-sm">{i.area}</span>}
-                  <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-sm font-medium capitalize">{String(i.estado).replace("_", " ")}</span>
+          <div ref={bodyRef} tabIndex={-1} className="grid grid-cols-1 md:grid-cols-2 gap-5 outline-none">
+            {/* Left Column: Form Fields / Insumo Info */}
+            <div className="flex flex-col gap-3">
+              <p className="text-sm font-bold border-b pb-1 text-muted-foreground">📋 Datos del Insumo</p>
+              {editable ? (<>
+                <Campo label="Nombre"><Input value={i.nombre ?? ""} onChange={(e) => setI({ ...i, nombre: e.target.value })} className={inputCls} /></Campo>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <Campo label="Cantidad"><Input value={i.cantidad ?? ""} inputMode="numeric" onChange={(e) => setI({ ...i, cantidad: e.target.value ? Number(e.target.value) : null })} className={inputCls} /></Campo>
+                  <Campo label="Tipo">
+                    <select value={i.presentacion ?? ""} onChange={(e) => setI({ ...i, presentacion: e.target.value || null })} className={`${selectCls} capitalize`}>
+                      {PRESENTACIONES.map((s) => <option key={s} value={s}>{s || "—"}</option>)}
+                    </select>
+                  </Campo>
+                  <Campo label="Dosis/unidad"><Input value={i.unidad ?? ""} placeholder="mg, ml…" onChange={(e) => setI({ ...i, unidad: e.target.value })} className={inputCls} /></Campo>
                 </div>
-                {i.para_que_sirve && <p className="text-sm"><span className="text-muted-foreground">¿Para qué sirve? </span>{i.para_que_sirve}</p>}
-                {i.alternativas && <p className="text-sm"><span className="text-muted-foreground">Alternativas: </span>{i.alternativas}</p>}
-              </div>
-            )}
-            {h && <p className="text-base">🏥 {h.nombre}{h.ubicacion ? ` · ${h.ubicacion}` : ""}</p>}
-            <p className="text-xs text-muted-foreground" title={fechaHora(i.created_at)}>
-              🕑 Solicitado {hace(i.created_at)}{i.estado === "cubierto" && i.cubierto_at ? ` · cubierto ${hace(i.cubierto_at)}` : ""}
-            </p>
-
-            {/* Conciliación Necesidad ↔ Donación (visible a todos). */}
-            {solicitada > 0 && (
-              <div className="rounded-xl border p-3 text-sm">
-                <p className="font-semibold mb-1">Conciliación</p>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div><div className="text-lg font-bold text-amber-600">{pendiente}</div><div className="text-xs text-muted-foreground">Pendiente</div></div>
-                  <div><div className="text-lg font-bold text-blue-600">{enCamino}</div><div className="text-xs text-muted-foreground">En camino</div></div>
-                  <div><div className="text-lg font-bold text-green-600">{recibida}</div><div className="text-xs text-muted-foreground">Recibido</div></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Campo label="Área"><Input value={i.area ?? ""} placeholder="Trauma, Neonato…" onChange={(e) => setI({ ...i, area: e.target.value })} className={inputCls} /></Campo>
+                  <Campo label="Estado">
+                    <select value={i.estado} onChange={(e) => setI({ ...i, estado: e.target.value })} className={`${selectCls} capitalize`}>
+                      {ESTADOS_INSUMO.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+                    </select>
+                  </Campo>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 text-center">Solicitado: {solicitada}</p>
-              </div>
-            )}
-
-            {/* Donante institucional (centro/ONG) registra envío -> pasa a "En camino". */}
-            {donante && pendiente > 0 && (
-              <div className="flex items-end gap-2">
-                <Campo label="🎁 Donar (en camino)">
-                  <Input inputMode="numeric" value={montoDon} placeholder={String(pendiente)}
-                    onChange={(e) => setMontoDon(e.target.value)} className={inputCls} />
-                </Campo>
-                <Button size="lg" onClick={registrarDonacion}>Registrar</Button>
-              </div>
-            )}
-
-            {/* Listado de donaciones de esta necesidad. */}
-            {donaciones.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium">Donaciones</p>
-                {donaciones.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between gap-2 text-sm border-b py-1">
-                    <span>
-                      {d.cantidad} · <span className="capitalize">{String(d.estado).replace("_", " ")}</span>
-                      {d.centros_acopio?.nombre ? ` · ${d.centros_acopio.nombre}` : d.donante_nombre ? ` · ${d.donante_nombre}` : ""}
-                    </span>
-                    {d.estado === "en_camino" && (
-                      <span className="flex gap-1 shrink-0">
-                        {gestion && <Button size="sm" variant="outline" onClick={() => recibir(d.id)}>Recibí</Button>}
-                        {(donante || gestion) && <Button size="sm" variant="ghost" aria-label="Cancelar donación" title="Cancelar donación" className="text-destructive" onClick={() => cancelar(d.id)}>✕</Button>}
-                      </span>
-                    )}
+                <Campo label="¿Para qué sirve?"><Input value={i.para_que_sirve ?? ""} onChange={(e) => setI({ ...i, para_que_sirve: e.target.value })} className={inputCls} /></Campo>
+                <Campo label="Alternativas si no se consigue"><Input value={i.alternativas ?? ""} onChange={(e) => setI({ ...i, alternativas: e.target.value })} className={inputCls} /></Campo>
+              </>) : (
+                <div className="flex flex-col gap-2 text-base">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(i.cantidad || i.presentacion || i.unidad) && <span className="font-medium">{[i.cantidad, i.presentacion, i.unidad].filter(Boolean).join(" ")}</span>}
+                    {i.area && <span className="rounded-full bg-muted px-2 py-0.5 text-sm">{i.area}</span>}
+                    <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-sm font-medium capitalize">{String(i.estado).replace("_", " ")}</span>
                   </div>
-                ))}
+                  {i.para_que_sirve && <p className="text-sm"><span className="text-muted-foreground">¿Para qué sirve? </span>{i.para_que_sirve}</p>}
+                  {i.alternativas && <p className="text-sm"><span className="text-muted-foreground">Alternativas: </span>{i.alternativas}</p>}
+                </div>
+              )}
+              {h && <p className="text-xs text-muted-foreground mt-1">🏥 {h.nombre}{h.ubicacion ? ` · ${h.ubicacion}` : ""}</p>}
+              <p className="text-[11px] text-muted-foreground" title={fechaHora(i.created_at)}>
+                🕑 Solicitado {hace(i.created_at)}{i.estado === "cubierto" && i.cubierto_at ? ` · cubierto ${hace(i.cubierto_at)}` : ""}
+              </p>
+              {maps && <a href={maps} target="_blank" rel="noreferrer" className="mt-1"><Button size="sm" variant="outline" className="w-full">📍 Hospital en mapa</Button></a>}
+              
+              <p className="text-[10px] text-muted-foreground border-t pt-2 mt-2 leading-snug">
+                No nos hacemos responsables del tiempo de cambio de estatus. AviHelp es un puente de comunicación; la repartición se gestiona en cada centro de acopio.
+              </p>
+            </div>
+
+            {/* Right Column: Tabbed Management Section */}
+            <div className="flex flex-col gap-3">
+              <div className="flex border-b text-xs font-semibold gap-1">
+                <button
+                  type="button"
+                  onClick={() => setTabActiva("donaciones")}
+                  className={`flex-1 pb-2 border-b-2 text-center transition ${tabActiva === "donaciones" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}
+                >
+                  🎁 Donaciones ({donaciones.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTabActiva("conciliacion")}
+                  className={`flex-1 pb-2 border-b-2 text-center transition ${tabActiva === "conciliacion" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}
+                >
+                  📊 Conciliación
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTabActiva("eventos")}
+                  className={`flex-1 pb-2 border-b-2 text-center transition ${tabActiva === "eventos" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}
+                >
+                  📋 Eventos ({eventos.length})
+                </button>
               </div>
-            )}
 
-            {tracking && (<>
-              <Separator /><p className="text-sm font-semibold">Tracking</p>
-              {/* Reversible: toca cualquier estado para cambiarlo. "Pendiente" = aún nadie atiende esta necesidad. */}
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <Button size="lg" variant={i.estado === "solicitado" ? "default" : "outline"} onClick={() => cambiarEstado("solicitado")}>📋 Pendiente</Button>
-                <Button size="lg" variant={i.estado === "en_transito" ? "default" : "outline"} onClick={() => cambiarEstado("en_transito")}>🚚 En tránsito</Button>
-                <Button size="lg" variant={i.estado === "entregado" ? "default" : "outline"} onClick={() => cambiarEstado("entregado")}>✅ Entregado</Button>
-              </div>
-              <p className="text-xs text-muted-foreground">Toca cualquier estado para cambiarlo. Si te equivocaste, vuelve a “Pendiente”.</p>
-            </>)}
-            {cubrir && i.estado !== "cubierto" && (
-              <Button size="lg" variant="default" onClick={marcarCubierto} className="w-full bg-green-600 hover:bg-green-700">
-                ✔ Marcar como Cubierto (recibido)
-              </Button>
-            )}
-            {i.estado === "cubierto" && (
-              <p className="text-sm font-medium text-green-700 text-center">✔ Cubierto{i.cubierto_por ? ` por ${i.cubierto_por}` : ""}</p>
-            )}
-            {maps && <a href={maps} target="_blank" rel="noreferrer"><Button size="lg" variant="outline" className="w-full">📍 Hospital en mapa</Button></a>}
+              {/* Tab 1 Content: Donations List & Manual Register */}
+              {tabActiva === "donaciones" && (
+                <div className="flex flex-col gap-2">
+                  {(donante || gestion) && pendiente > 0 && (
+                    <div className="flex items-end gap-2 bg-primary/5 p-3 rounded-lg border border-primary/10">
+                      <Campo label="🎁 Registrar nueva donación (cant.)">
+                        <Input inputMode="numeric" value={montoDon} placeholder={String(pendiente)}
+                          onChange={(e) => setMontoDon(e.target.value)} className={inputCls} />
+                      </Campo>
+                      <Button size="lg" onClick={registrarDonacion} className="h-11">Registrar</Button>
+                    </div>
+                  )}
 
-            {eventos.length > 0 && (
-              <><Separator /><div><p className="text-sm font-medium mb-1">Eventos</p>
-                {eventos.map((e) => (
-                  <p key={e.id} className="text-sm text-muted-foreground">
-                    • <span className="capitalize font-medium text-foreground">{e.estado.replace("_", " ")}</span>
-                    {e.created_at ? ` · ${fechaHora(e.created_at)}` : ""}{e.actor ? ` · ${e.actor}` : ""}
-                  </p>
-                ))}
-              </div></>
-            )}
+                  {donaciones.length > 0 ? (
+                    <div className="flex flex-col gap-1.5 max-h-56 overflow-auto pr-1">
+                      {donaciones.map((d) => (
+                        <div key={d.id} className="flex items-center justify-between gap-2 text-xs border p-2 rounded-lg bg-card hover:bg-muted/10 transition">
+                          <span className="min-w-0 flex-1">
+                            <span className="font-bold text-primary">{d.cantidad} und.</span> · <span className="capitalize text-muted-foreground text-[10px]">{String(d.estado).replace("_", " ")}</span>
+                            <span className="block font-medium truncate mt-0.5 text-foreground">
+                              {d.centros_acopio?.nombre ? `🏢 ${d.centros_acopio.nombre}` : d.donante_nombre ? `👤 ${d.donante_nombre}` : "👤 Anónimo"}
+                            </span>
+                          </span>
+                          {d.estado === "en_camino" && (
+                            <span className="flex gap-1 shrink-0">
+                              {gestion && <Button size="sm" onClick={() => recibir(d.id)} className="h-7 text-[11px] px-2.5 bg-green-600 hover:bg-green-700">Recibí</Button>}
+                              {(donante || gestion) && <Button size="sm" variant="ghost" aria-label="Cancelar donación" title="Cancelar donación" className="h-7 w-7 text-destructive p-0" onClick={() => cancelar(d.id)}>✕</Button>}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center text-xs text-muted-foreground py-6">Sin donaciones registradas aún.</div>
+                  )}
 
-            <p className="text-xs text-muted-foreground border-t pt-2 mt-1 leading-snug">
-              No nos hacemos responsables del tiempo de cambio de estatus: depende de la gestión de los encargados de cada centro. AviHelp es un puente de comunicación; la repartición se gestiona en cada centro de acopio según la necesidad reflejada.
-            </p>
+                  {donaciones.length > 0 && (
+                    <Button type="button" size="sm" variant="outline" onClick={exportarCSV} className="self-start mt-1">
+                      📥 Exportar a CSV/Excel
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 2 Content: Conciliation & Tracking state */}
+              {tabActiva === "conciliacion" && (
+                <div className="flex flex-col gap-3">
+                  {solicitada > 0 && (
+                    <div className="rounded-xl border p-3 text-xs bg-muted/20">
+                      <p className="font-semibold mb-2">Conciliación de Cantidades</p>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="border rounded-lg p-1.5 bg-card">
+                          <div className="text-base font-bold text-amber-600">{pendiente}</div>
+                          <div className="text-[10px] text-muted-foreground">Pendiente</div>
+                        </div>
+                        <div className="border rounded-lg p-1.5 bg-card">
+                          <div className="text-base font-bold text-blue-600">{enCamino}</div>
+                          <div className="text-[10px] text-muted-foreground">En camino</div>
+                        </div>
+                        <div className="border rounded-lg p-1.5 bg-card">
+                          <div className="text-base font-bold text-green-600">{recibida}</div>
+                          <div className="text-[10px] text-muted-foreground">Recibido</div>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-2 text-center font-medium">Solicitado original: {solicitada}</p>
+                    </div>
+                  )}
+
+                  {tracking && (
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-xs font-semibold text-muted-foreground">Tracking General del Insumo:</p>
+                      <div className="grid grid-cols-3 gap-1">
+                        <Button size="sm" variant={i.estado === "solicitado" ? "default" : "outline"} onClick={() => cambiarEstado("solicitado")} className="text-xs h-9">📋 Pendiente</Button>
+                        <Button size="sm" variant={i.estado === "en_transito" ? "default" : "outline"} onClick={() => cambiarEstado("en_transito")} className="text-xs h-9">🚚 En tránsito</Button>
+                        <Button size="sm" variant={i.estado === "entregado" ? "default" : "outline"} onClick={() => cambiarEstado("entregado")} className="text-xs h-9">✅ Entregado</Button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">Si te equivocaste, puedes volver a “Pendiente”.</p>
+                    </div>
+                  )}
+
+                  {cubrir && i.estado !== "cubierto" && (
+                    <Button size="lg" variant="default" onClick={marcarCubierto} className="w-full bg-green-600 hover:bg-green-700 mt-1 h-11 text-sm">
+                      ✔ Marcar como Cubierto (recibido)
+                    </Button>
+                  )}
+                  {i.estado === "cubierto" && (
+                    <p className="text-sm font-semibold text-green-700 text-center mt-1">✔ Cubierto{i.cubierto_por ? ` por ${i.cubierto_por}` : ""}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 3 Content: Event Log */}
+              {tabActiva === "eventos" && (
+                <div className="flex flex-col gap-1.5 max-h-64 overflow-auto pr-1">
+                  {eventos.length > 0 ? (
+                    eventos.map((e) => (
+                      <div key={e.id} className="text-[11px] border-b pb-1">
+                        • <span className="capitalize font-semibold text-foreground">{e.estado.replace("_", " ")}</span>
+                        {e.actor && <span className="text-muted-foreground"> por {e.actor}</span>}
+                        {e.created_at && <span className="block text-[9px] text-muted-foreground mt-0.5">{fechaHora(e.created_at)}</span>}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center text-xs text-muted-foreground py-6">Sin eventos registrados.</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
         {editable && (
-          <DialogFooter className="gap-2">
-            {puede("eliminar") && <Button variant="ghost" size="lg" onClick={borrar} className="text-destructive sm:mr-auto">Eliminar</Button>}
-            <Button size="lg" onClick={guardar} disabled={guardando} className="px-8">{guardando ? "Guardando…" : "Guardar"}</Button>
+          <DialogFooter className="gap-2 border-t pt-3 mt-1">
+            {puede("eliminar") && <Button variant="ghost" size="lg" onClick={borrar} className="text-destructive sm:mr-auto h-11 text-sm">Eliminar</Button>}
+            <Button size="lg" onClick={guardar} disabled={guardando} className="px-8 h-11 text-sm">{guardando ? "Guardando…" : "Guardar"}</Button>
           </DialogFooter>
         )}
       </DialogContent>
