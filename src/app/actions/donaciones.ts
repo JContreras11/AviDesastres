@@ -7,7 +7,8 @@ import { registrarLog } from "@/app/actions/audit";
 // recalcula en_camino/recibida/estatus (el "match"); aquí solo validamos permisos.
 const DENEGADO = { ok: false as const, error: "No autorizado para esta acción." };
 
-// Responsable/Admin Institucional confirma una donación -> ítems pasan a "En Camino".
+// Responsable/Admin Institucional REGISTRA una donación. NACE 'registrada' (pendiente):
+// NO cuenta como "en camino" hasta que alguien la mueva explícitamente (marcarDonacionEnCamino).
 export async function crearDonacion(insumoId: string, cantidad: number, centroId?: string) {
   const sc = await getScope();
   const a = createAdminClient();
@@ -30,11 +31,27 @@ export async function crearDonacion(insumoId: string, cantidad: number, centroId
   }
   const { error } = await a.from("donaciones").insert({
     insumo_id: insumoId, centro_id: centro, donante_user: sc.uid, donante_nombre: nombre,
-    cantidad: cant, estado: "en_camino",
+    cantidad: cant, estado: "registrada",
   });
   if (error) return { ok: false, error: error.message };
   await registrarLog("donar", "insumo", insumoId, { cantidad: cant });
   return { ok: true };
+}
+
+// Acción EXPLÍCITA: el donante/centro marca su donación EN CAMINO (ya salió hacia el destino).
+// Solo aquí una donación pasa a contar como "en camino" en la conciliación de la Necesidad.
+export async function marcarDonacionEnCamino(donacionId: string) {
+  const a = createAdminClient();
+  const sc = await getScope();
+  const { data: d } = await a.from("donaciones").select("donante_user, centro_id, estado").eq("id", donacionId).single();
+  if (!d) return { ok: false as const, error: "Donación no encontrada." };
+  if ((d as any).estado === "recibido") return { ok: false as const, error: "Ya fue recibida." };
+  const propio = (d as any).donante_user === sc.uid || (!!(d as any).centro_id && sc.centroIds.includes((d as any).centro_id));
+  if (!sc.admin && !propio) return DENEGADO;
+  const { error } = await a.from("donaciones").update({ estado: "en_camino" }).eq("id", donacionId);
+  if (error) return { ok: false as const, error: error.message };
+  await registrarLog("editar", "donacion", donacionId, { estado: "en_camino" });
+  return { ok: true as const };
 }
 
 // Responsable de Centro de Salud confirma que recibió la donación.
@@ -113,7 +130,7 @@ export async function donarNecesidad(insumoId: string, datos: { cantidad: number
   if (!insumo) return { ok: false as const, error: "La necesidad ya no existe." };
 
   const { error } = await a.from("donaciones").insert({
-    insumo_id: insumoId, cantidad: cant, estado: "en_camino",
+    insumo_id: insumoId, cantidad: cant, estado: "registrada",
     donante_user: sc.uid ?? null,
     donante_nombre: datos.nombre.trim(),
     donante_telefono: datos.telefono?.trim() || null,
@@ -127,14 +144,12 @@ export async function donarNecesidad(insumoId: string, datos: { cantidad: number
   return { ok: true as const, centros, hospital: (insumo as any).hospitales ?? null };
 }
 
-// Centros de acopio relacionados con un hospital (dónde entregar la donación).
-export async function centrosDeHospital(hospitalId: string) {
-  if (!hospitalId) return [];
-  const a = createAdminClient();
-  const { data } = await a.from("centro_hospital")
-    .select("centros_acopio(id,nombre,zona,ubicacion,gps_lat,gps_lng,contacto_telefono,horario)")
-    .eq("hospital_id", hospitalId);
-  return (data ?? []).map((r: any) => r.centros_acopio).filter(Boolean);
+// Centros/refugios CERCANOS a un hospital (dónde entregar la donación), por proximidad,
+// SIN incluir el hospital mismo. Reutiliza lugaresEntrega (fuente única = hospitales).
+// Se muestra en el modal rápido y en CentroModal (sección de donar).
+export async function centrosDeHospital(hospitalId: string): Promise<LugarEntrega[]> {
+  const lugares = await lugaresEntrega(hospitalId);
+  return lugares.filter((l) => !l.esHospital);
 }
 
 // Admin: define qué hospitales atiende un centro de acopio (N:M).
@@ -157,15 +172,84 @@ export async function hospitalesDeCentro(centroId: string) {
   return (data ?? []).map((r: any) => r.hospital_id);
 }
 
-// Lugares de ENTREGA de la donación para un hospital: refugios/centros (instituciones)
-// cercanos por ciudad (tabla hospital_refugio). Fuente única = hospitales. Para el modal
-// de donación, la página de refugios y el chat de Avi (info pública).
-export async function lugaresEntrega(hospitalId: string) {
+// FIX NEVER-ORPHAN: registra una cuenta de DONANTE público (email + contraseña) para que
+// su donación quede ligada a un usuario real, no huérfana. Crea el usuario confirmado
+// (email_confirm) y rellena su perfil; el cliente luego hace signInWithPassword para
+// abrir sesión y reenviar la donación ya autenticada. Si el correo ya existe, lo indica
+// para que inicie sesión en su lugar.
+export async function registrarDonante(datos: { email: string; password: string; nombre?: string; telefono?: string }) {
+  const email = datos.email?.trim().toLowerCase();
+  if (!email || !/.+@.+\..+/.test(email)) return { ok: false as const, error: "Escribe un correo válido." };
+  if (!datos.password || datos.password.length < 6) return { ok: false as const, error: "La contraseña debe tener al menos 6 caracteres." };
+  const a = createAdminClient();
+  const { data, error } = await a.auth.admin.createUser({ email, password: datos.password, email_confirm: true });
+  if (error) {
+    const ya = /already|registered|exist/i.test(error.message);
+    return { ok: false as const, error: ya ? "Ese correo ya tiene cuenta. Inicia sesión con tu contraseña." : error.message, yaExiste: ya };
+  }
+  await a.from("profiles").update({
+    nombre: datos.nombre?.trim() || null, telefono: datos.telefono?.trim() || null, rol: "publico", activo: true,
+  }).eq("id", data.user.id);
+  await registrarLog("crear", "usuario", data.user.id, { email, origen: "donante" });
+  return { ok: true as const };
+}
+
+// Un lugar donde entregar (o presentarse, si es voluntariado) una donación.
+export type LugarEntrega = {
+  id: string; nombre: string; ubicacion: string | null;
+  gps_lat: number | null; gps_lng: number | null;
+  tipo: string;                 // 'hospital' | 'clinica' | 'refugio' | 'centro'
+  contacto: string | null;
+  distanciaKm: number | null;   // al hospital (heurística de proximidad, servidor)
+  esHospital: boolean;          // true = el hospital mismo (entrega directa)
+};
+
+// Distancia Haversine en km (para ordenar puntos por cercanía).
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 6371, rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(bLat - aLat), dLng = rad(bLng - aLng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+// Lugares de ENTREGA de la donación para un hospital. NUNCA vacío (FIX 1):
+//  1) refugios/centros mapeados por ciudad (tabla hospital_refugio) primero;
+//  2) el RESTO de refugios/centros como respaldo, ordenados por cercanía (haversine);
+//  3) SIEMPRE el hospital mismo como punto de entrega válido (entregar directo allí).
+// Fuente única = hospitales (tipo refugio/centro son puntos de acopio). Para el modal de
+// donación, CentroModal, la página de refugios y el chat de Avi (info pública).
+export async function lugaresEntrega(hospitalId: string): Promise<LugarEntrega[]> {
   if (!hospitalId) return [];
   const a = createAdminClient();
-  const { data: hr } = await a.from("hospital_refugio").select("refugio_id").eq("hospital_id", hospitalId);
-  const ids = (hr ?? []).map((x: any) => x.refugio_id).filter(Boolean);
-  if (!ids.length) return [];
-  const { data } = await a.from("hospitales").select("id,nombre,ubicacion,gps_lat,gps_lng").in("id", ids);
-  return (data ?? []).map((r: any) => ({ ...r, tipo: "Centro de acopio" }));
+  const [hospRes, hrRes, puntosRes] = await Promise.all([
+    a.from("hospitales").select("id,nombre,ubicacion,gps_lat,gps_lng,tipo,contacto").eq("id", hospitalId).maybeSingle(),
+    a.from("hospital_refugio").select("refugio_id").eq("hospital_id", hospitalId),
+    a.from("hospitales").select("id,nombre,ubicacion,gps_lat,gps_lng,tipo,contacto").in("tipo", ["refugio", "centro"]),
+  ]);
+  const hosp: any = hospRes.data;
+  const mapeados = new Set((hrRes.data ?? []).map((x: any) => x.refugio_id).filter(Boolean));
+  const hLat = hosp?.gps_lat, hLng = hosp?.gps_lng;
+  const dist = (p: any) =>
+    hLat != null && hLng != null && p.gps_lat != null && p.gps_lng != null ? haversineKm(hLat, hLng, p.gps_lat, p.gps_lng) : null;
+
+  type Cand = { p: any; mapeado: boolean; d: number | null };
+  const candidatos = (puntosRes.data ?? [])
+    .filter((p: any) => p.id !== hospitalId)
+    .map((p: any): Cand => ({ p, mapeado: mapeados.has(p.id), d: dist(p) }))
+    .sort((x: Cand, y: Cand) => {
+      if (x.mapeado !== y.mapeado) return x.mapeado ? -1 : 1;   // los de su ciudad primero
+      return (x.d ?? Infinity) - (y.d ?? Infinity);              // luego, por cercanía
+    })
+    .slice(0, 6)
+    .map(({ p, d }: Cand): LugarEntrega => ({
+      id: p.id, nombre: p.nombre, ubicacion: p.ubicacion, gps_lat: p.gps_lat, gps_lng: p.gps_lng,
+      tipo: p.tipo, contacto: p.contacto ?? null, distanciaKm: d, esHospital: false,
+    }));
+
+  // SIEMPRE ≥1 lugar: el propio hospital es un punto de entrega válido.
+  if (hosp) candidatos.push({
+    id: hosp.id, nombre: hosp.nombre, ubicacion: hosp.ubicacion, gps_lat: hosp.gps_lat, gps_lng: hosp.gps_lng,
+    tipo: hosp.tipo ?? "hospital", contacto: hosp.contacto ?? null, distanciaKm: 0, esHospital: true,
+  });
+  return candidatos;
 }

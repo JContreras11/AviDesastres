@@ -28,16 +28,18 @@ export function Desaparecidos({ personas }: { personas: Persona[] }) {
     <>
       <input
         value={q} onChange={(e) => setQ(e.target.value)}
+        type="search" aria-label="Buscar persona por nombre, zona o descripción" autoComplete="off"
         placeholder="🔎 Buscar por nombre, zona, descripción…"
         className="w-full h-11 px-3 mb-4 rounded-xl border bg-background text-base"
       />
+      <p className="sr-only" role="status" aria-live="polite">{filtrados.length} resultados</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {filtrados.map((p) => (
           <div key={p.id} className="rounded-2xl border bg-card overflow-hidden flex flex-col">
             <div className="aspect-square bg-muted grid place-items-center overflow-hidden">
               {p.fotos?.[0]
-                ? <Img src={p.fotos[0]} className="w-full h-full object-cover" />
-                : <span className="text-4xl text-muted-foreground">👤</span>}
+                ? <Img src={p.fotos[0]} alt={`Foto de ${p.nombre}`} className="w-full h-full object-cover" />
+                : <span className="text-4xl text-muted-foreground" role="img" aria-label="Sin foto">👤</span>}
             </div>
             <div className="p-3 flex flex-col gap-1 flex-1">
               <span className="text-xs font-medium text-purple-600 dark:text-purple-400">Desaparecido</span>
@@ -48,7 +50,7 @@ export function Desaparecidos({ personas }: { personas: Persona[] }) {
               {p.ubicacion && <p className="text-xs text-muted-foreground">📍 {p.ubicacion}</p>}
               {p.descripcion_fisica && <p className="text-xs text-muted-foreground line-clamp-2">{p.descripcion_fisica}</p>}
               {p.telefono_contacto && (
-                <a href={`tel:${p.telefono_contacto}`} className="mt-auto pt-2 text-sm text-center rounded-lg bg-primary text-primary-foreground py-1.5 font-medium">
+                <a href={`tel:${p.telefono_contacto.replace(/[^\d+]/g, "")}`} aria-label={`Llamar para dar información sobre ${p.nombre}`} className="mt-auto pt-2 text-sm text-center rounded-lg bg-primary text-primary-foreground py-1.5 font-medium">
                   📞 Tengo información
                 </a>
               )}

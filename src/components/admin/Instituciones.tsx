@@ -44,7 +44,7 @@ export function Instituciones({ hospitales, centros }: { hospitales: Hospital[];
         <p className="font-medium truncate">{h.nombre}</p>
         {h.ubicacion && <p className="text-xs text-muted-foreground truncate">{h.ubicacion}</p>}
       </div>
-      <span className="text-xs rounded-full bg-muted px-2 py-0.5 shrink-0">{h.tipo === "clinica" ? "Clínica" : h.tipo === "refugio" ? "Refugio" : "Hospital"}</span>
+      <span className="text-xs rounded-full bg-muted px-2 py-0.5 shrink-0">{h.tipo === "clinica" ? "Clínica" : h.tipo === "refugio" ? "Refugio" : h.tipo === "centro" ? "Centro de acopio" : "Hospital"}</span>
     </button>
   );
 
@@ -100,6 +100,7 @@ function HospitalForm({ h, onClose, onSaved }: { h: Hospital; onClose: () => voi
   const [guardando, setGuardando] = useState(false);
 
   async function guardar() {
+    if (!f.nombre?.trim()) { toast.error("El nombre es obligatorio."); return; } // no pierde lo escrito
     setGuardando(true);
     const r = nuevo ? await crearHospital(f) : await actualizarHospital(h.id!, f);
     setGuardando(false);

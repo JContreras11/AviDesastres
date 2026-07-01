@@ -44,38 +44,68 @@ async function usuarioEfectivo(): Promise<{ realUid: string | null; uid: string 
 }
 
 // Sesión del usuario efectivo + su perfil/rol + sus membresías. Para Server Components.
-export async function getSesion(): Promise<{ rol: string; email: string | null; nombre: string | null; hospitalIds: string[]; centroIds: string[]; impersonando?: boolean } | null> {
+// APROBACIÓN: solo cuentan las membresías 'aprobado'. Un usuario auto-registrado tiene
+// su(s) membresía(s) en 'pendiente' -> se le degrada el rol efectivo a 'publico' hasta
+// que un admin lo apruebe (frontera de seguridad server-side; nunca solo en el cliente).
+export async function getSesion(): Promise<{ rol: string; email: string | null; nombre: string | null; hospitalIds: string[]; centroIds: string[]; impersonando?: boolean; pendiente?: boolean } | null> {
   const { uid, impersonando } = await usuarioEfectivo();
   if (!uid) return null;
   // El perfil vive con service_role para no depender de RLS todavía.
   const admin = createAdminClient();
   const [{ data: perfil }, { data: mem }] = await Promise.all([
     admin.from("profiles").select("rol, nombre, email, activo").eq("id", uid).maybeSingle(),
-    admin.from("membresias").select("hospital_id, centro_id").eq("user_id", uid),
+    admin.from("membresias").select("hospital_id, centro_id, estado").eq("user_id", uid),
   ]);
   if (perfil && perfil.activo === false && !impersonando) return null;
+  const rolBase = perfil?.rol ?? "publico";
+  const aprobadas = (mem ?? []).filter((m: any) => m.estado === "aprobado");
+  // Tiene membresías pero NINGUNA aprobada = registro pendiente. (Cero membresías = usuario
+  // de confianza con rol fijado por un admin, p.ej. médico global; ese NO se degrada.)
+  const pendiente = (mem ?? []).length > 0 && aprobadas.length === 0;
+  const rol = rolBase !== "admin" && pendiente ? "publico" : rolBase;
   return {
-    rol: perfil?.rol ?? "publico", email: perfil?.email ?? null, nombre: perfil?.nombre ?? null,
-    hospitalIds: (mem ?? []).map((m: any) => m.hospital_id).filter(Boolean),
-    centroIds: (mem ?? []).map((m: any) => m.centro_id).filter(Boolean),
-    impersonando,
+    rol, email: perfil?.email ?? null, nombre: perfil?.nombre ?? null,
+    hospitalIds: aprobadas.map((m: any) => m.hospital_id).filter(Boolean),
+    centroIds: aprobadas.map((m: any) => m.centro_id).filter(Boolean),
+    impersonando, pendiente,
   };
 }
 
 // Alcance del usuario efectivo para acciones de escritura: admin=global; resto=solo sus membresías.
 // Frontera de seguridad: service_role salta RLS, así que CADA mutación debe verificar esto.
-export async function getScope(): Promise<{ uid: string | null; admin: boolean; hospitalIds: string[]; centroIds: string[] }> {
+export async function getScope(): Promise<{ uid: string | null; admin: boolean; hospitalIds: string[]; centroIds: string[]; hospitalIdsTodos: string[]; centroIdsTodos: string[] }> {
   const { uid } = await usuarioEfectivo();
-  if (!uid) return { uid: null, admin: false, hospitalIds: [], centroIds: [] };
+  if (!uid) return { uid: null, admin: false, hospitalIds: [], centroIds: [], hospitalIdsTodos: [], centroIdsTodos: [] };
   const a = createAdminClient();
   const { data: perfil } = await a.from("profiles").select("rol").eq("id", uid).maybeSingle();
-  if (perfil?.rol === "admin") return { uid, admin: true, hospitalIds: [], centroIds: [] };
-  const { data: mem } = await a.from("membresias").select("hospital_id, centro_id").eq("user_id", uid);
+  if (perfil?.rol === "admin") return { uid, admin: true, hospitalIds: [], centroIds: [], hospitalIdsTodos: [], centroIdsTodos: [] };
+  // Solo membresías APROBADAS otorgan alcance de LECTURA/edición. Un registro pendiente
+  // no puede ver ni cambiar estado hasta que un admin lo apruebe.
+  // *Todos* (incl. pendiente) sí pueden CREAR una solicitud para su propio centro registrado.
+  const { data: mem } = await a.from("membresias").select("hospital_id, centro_id, estado").eq("user_id", uid);
+  const aprobadas = (mem ?? []).filter((m: any) => m.estado === "aprobado");
+  const todas = mem ?? [];
   return {
     uid, admin: false,
-    hospitalIds: (mem ?? []).map((m: any) => m.hospital_id).filter(Boolean),
-    centroIds: (mem ?? []).map((m: any) => m.centro_id).filter(Boolean),
+    hospitalIds: aprobadas.map((m: any) => m.hospital_id).filter(Boolean),
+    centroIds: aprobadas.map((m: any) => m.centro_id).filter(Boolean),
+    hospitalIdsTodos: todas.map((m: any) => m.hospital_id).filter(Boolean),
+    centroIdsTodos: todas.map((m: any) => m.centro_id).filter(Boolean),
   };
+}
+
+// Helper de APROBACIÓN reutilizable (para Agent B / solicitudes, etc.): ¿el usuario
+// efectivo tiene acceso ampliado? admin=sí; sin membresías=usuario de confianza (sí);
+// con membresías pero ninguna aprobada = registro pendiente (no). Server-side.
+export async function estaAprobado(): Promise<boolean> {
+  const { uid } = await usuarioEfectivo();
+  if (!uid) return false;
+  const a = createAdminClient();
+  const { data: perfil } = await a.from("profiles").select("rol").eq("id", uid).maybeSingle();
+  if (perfil?.rol === "admin") return true;
+  const { data: mem } = await a.from("membresias").select("estado").eq("user_id", uid);
+  if (!mem || mem.length === 0) return true;
+  return mem.some((m: any) => m.estado === "aprobado");
 }
 
 // Cliente con service_role: salta RLS. SOLO en server actions de confianza (IA, escrituras masivas).

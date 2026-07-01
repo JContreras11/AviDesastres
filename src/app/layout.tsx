@@ -8,6 +8,7 @@ import { Providers } from "@/components/Providers";
 import { ChatProvider } from "@/lib/chat-store";
 import { ChatWidget } from "@/components/ChatWidget";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
+import { Bienvenida } from "@/components/Bienvenida";
 import { getSesion } from "@/lib/supabase/server";
 import "./globals.css";
 
@@ -25,9 +26,18 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Dominio de producción para que og:image y enlaces relativos resuelvan absolutos.
+  metadataBase: new URL("https://avihelp.app"),
   title: "AviHelp — Ayuda humanitaria con IA",
   description: "Registra personas e insumos en emergencias con una foto o tu voz.",
   manifest: "/manifest.webmanifest",
+  openGraph: {
+    type: "website",
+    siteName: "AviHelp",
+    title: "AviHelp — Ayuda humanitaria con IA",
+    description: "Registra personas e insumos en emergencias con una foto o tu voz.",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = {
@@ -54,6 +64,8 @@ export default async function RootLayout({
             <ChatProvider>
               {s?.impersonando && <ImpersonationBanner nombre={s.nombre} rol={s.rol} />}
               <div className="print:hidden contents"><Header /></div>
+              {/* Onboarding "¿Cómo funciona?": primera sesión de TODOS (incl. público). */}
+              <Bienvenida loggedIn={!!s} />
               {children}
               <ChatWidget />
             </ChatProvider>

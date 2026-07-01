@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { fechaHora } from "@/lib/format";
 import { listarLog } from "@/app/actions/audit";
@@ -23,10 +24,15 @@ export function LogViewer({ inicial, total }: { inicial: Row[]; total: number })
 
   async function masResultados() {
     setCargando(true);
-    const { rows: nuevas } = await listarLog(page + 1, PAGE);
-    setRows((r) => [...r, ...nuevas as Row[]]);
-    setPage((p) => p + 1);
-    setCargando(false);
+    try {
+      const { rows: nuevas } = await listarLog(page + 1, PAGE);
+      setRows((r) => [...r, ...nuevas as Row[]]);
+      setPage((p) => p + 1);
+    } catch {
+      toast.error("No se pudo cargar más registros. Reintenta.");
+    } finally {
+      setCargando(false); // nunca dejar el botón pegado en "Cargando…"
+    }
   }
 
   return (
@@ -43,7 +49,8 @@ export function LogViewer({ inicial, total }: { inicial: Row[]; total: number })
                 {e.detalle?.cantidad != null ? <span className="text-muted-foreground"> · {e.detalle.cantidad}</span> : ""}
               </p>
             </div>
-            <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">{fechaHora(e.created_at)}</span>
+            {/* La fecha localizada difiere server/cliente por zona horaria -> evita hydration mismatch */}
+            <span suppressHydrationWarning className="text-xs text-muted-foreground whitespace-nowrap shrink-0">{fechaHora(e.created_at)}</span>
           </div>
         ))}
         {rows.length === 0 && <p className="p-4 text-sm text-muted-foreground">Sin registros aún.</p>}

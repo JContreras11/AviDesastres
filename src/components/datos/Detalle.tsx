@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -40,14 +40,33 @@ export function PersonaDialog({ id, onClose, onChanged }: { id: string; onClose:
   const editable = puede("editar") && gestiona(p?.hospital_id);
   const [historial, setHistorial] = useState<any[]>([]);
   const [guardando, setGuardando] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  // Mueve el foco al cuerpo del diálogo cuando carga (teclado/lector de pantalla
+  // entran al modal, no quedan en la fila que lo abrió). Div, no input: en móvil no abre teclado.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (p || err) bodyRef.current?.focus(); }, [p, err]);
 
-  useEffect(() => { getPersona(id).then((r) => { setP(r.persona); setHistorial(r.historial); }); }, [id]);
+  useEffect(() => {
+    let vivo = true;
+    setErr(null); setP(null);
+    getPersona(id)
+      .then((r) => {
+        if (!vivo) return;
+        if (!r?.persona) { setErr("No se encontró esta persona."); return; }
+        setP(r.persona); setHistorial(r.historial ?? []);
+      })
+      .catch(() => { if (vivo) setErr("No se pudo cargar. Revisa tu conexión e inténtalo de nuevo."); });
+    return () => { vivo = false; };
+  }, [id]);
 
   async function guardar() {
+    if (!p?.nombre?.trim()) { toast.error("El nombre es obligatorio."); return; }
     setGuardando(true);
     const r = await actualizarPersona(id, p);
     setGuardando(false);
-    if (r.ok) { toast.success("Persona actualizada"); onChanged(); onClose(); } else toast.error((r as any).error);
+    // En error: NO cerramos ni reseteamos `p` — los cambios del usuario quedan intactos para reintentar.
+    if (r.ok) { toast.success("Persona actualizada"); onChanged(); onClose(); }
+    else toast.error((r as any).error ?? "No se pudo guardar. Inténtalo de nuevo.");
   }
   async function borrar() {
     if (!confirm("¿Eliminar esta persona?")) return;
@@ -60,9 +79,16 @@ export function PersonaDialog({ id, onClose, onChanged }: { id: string; onClose:
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle className="text-xl pr-8">{p?.nombre ?? "Cargando…"}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="text-xl pr-8">{p?.nombre ?? (err ? "Error" : "Cargando…")}</DialogTitle></DialogHeader>
+        {err && (
+          <div ref={bodyRef} tabIndex={-1} className="py-6 text-center text-sm text-muted-foreground outline-none">
+            <p className="mb-3">⚠️ {err}</p>
+            <Button variant="outline" size="lg" onClick={onClose}>Cerrar</Button>
+          </div>
+        )}
+        {!p && !err && <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Cargando…</div>}
         {p && (
-          <div className="flex flex-col gap-3">
+          <div ref={bodyRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
             {p.fotos?.length > 0 && (
               <div className="flex gap-2 overflow-auto pb-1">
                 {p.fotos.map((f: string) => <Img key={f} src={f} className="h-28 rounded-xl object-cover cursor-zoom-in shrink-0" />)}
@@ -123,12 +149,23 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
   const [eventos, setEventos] = useState<any[]>([]);
   const [donaciones, setDonaciones] = useState<any[]>([]);
   const [montoDon, setMontoDon] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (i || err) bodyRef.current?.focus(); }, [i, err]);
   // Solo gestiona (admin o miembro del hospital) puede editar/tracking/cubrir.
   const gestion = gestiona(i?.hospital_id);
   const editable = puede("editar") && gestion, tracking = puede("tracking") && gestion, cubrir = puede("cubrir") && gestion;
 
-  const cargar = () => getInsumo(id).then((r) => { setI(r.insumo); setEventos(r.eventos); setDonaciones(r.donaciones ?? []); });
-  useEffect(() => { cargar(); }, [id]);
+  // cargar se reusa tras cada mutación (no blanquea el modal); el reset vive en el effect por id.
+  const cargar = () =>
+    getInsumo(id)
+      .then((r) => {
+        if (!r?.insumo) { setErr("No se encontró este insumo."); return; }
+        setErr(null); setI(r.insumo); setEventos(r.eventos ?? []); setDonaciones(r.donaciones ?? []);
+      })
+      .catch(() => setErr("No se pudo cargar. Revisa tu conexión e inténtalo de nuevo."));
+  useEffect(() => { setI(null); setErr(null); cargar(); }, [id]);
 
   // Conciliación (match): pendiente = solicitada − en camino − recibida.
   const solicitada = Number(i?.cantidad ?? 0);
@@ -147,6 +184,7 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
     if (r.ok) { toast.success("Marcado como recibido"); cargar(); onChanged(); } else toast.error((r as any).error);
   }
   async function cancelar(donId: string) {
+    if (!confirm("¿Cancelar esta donación en camino? Volverá a quedar pendiente.")) return;
     const r = await cancelarDonacion(donId);
     if (r.ok) { toast.success("Donación cancelada"); cargar(); onChanged(); } else toast.error((r as any).error);
   }
@@ -161,8 +199,13 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
     if (r.ok) { toast.success("Insumo cubierto ✓"); cargar(); onChanged(); } else toast.error((r as any).error);
   }
   async function guardar() {
+    if (!i?.nombre?.trim()) { toast.error("El nombre del insumo es obligatorio."); return; }
+    setGuardando(true);
     const r = await actualizarInsumo(id, i);
-    if (r.ok) { toast.success("Insumo actualizado"); onChanged(); } else toast.error((r as any).error);
+    setGuardando(false);
+    // En error: no se cierra ni se resetea `i` — los cambios quedan para reintentar.
+    if (r.ok) { toast.success("Insumo actualizado"); onChanged(); }
+    else toast.error((r as any).error ?? "No se pudo guardar. Inténtalo de nuevo.");
   }
   async function borrar() {
     if (!confirm("¿Eliminar este insumo?")) return;
@@ -175,9 +218,16 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle className="text-xl pr-8">{i?.nombre ?? "Cargando…"}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="text-xl pr-8">{i?.nombre ?? (err ? "Error" : "Cargando…")}</DialogTitle></DialogHeader>
+        {err && (
+          <div ref={bodyRef} tabIndex={-1} className="py-6 text-center text-sm text-muted-foreground outline-none">
+            <p className="mb-3">⚠️ {err}</p>
+            <Button variant="outline" size="lg" onClick={onClose}>Cerrar</Button>
+          </div>
+        )}
+        {!i && !err && <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Cargando…</div>}
         {i && (
-          <div className="flex flex-col gap-3">
+          <div ref={bodyRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
             {/* Solo personal con permiso edita. El público abierto ve la necesidad en solo-lectura. */}
             {editable ? (<>
               <Campo label="Nombre"><Input value={i.nombre ?? ""} onChange={(e) => setI({ ...i, nombre: e.target.value })} className={inputCls} /></Campo>
@@ -253,7 +303,7 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
                     {d.estado === "en_camino" && (
                       <span className="flex gap-1 shrink-0">
                         {gestion && <Button size="sm" variant="outline" onClick={() => recibir(d.id)}>Recibí</Button>}
-                        {(donante || gestion) && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => cancelar(d.id)}>✕</Button>}
+                        {(donante || gestion) && <Button size="sm" variant="ghost" aria-label="Cancelar donación" title="Cancelar donación" className="text-destructive" onClick={() => cancelar(d.id)}>✕</Button>}
                       </span>
                     )}
                   </div>
@@ -300,7 +350,7 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
         {editable && (
           <DialogFooter className="gap-2">
             {puede("eliminar") && <Button variant="ghost" size="lg" onClick={borrar} className="text-destructive sm:mr-auto">Eliminar</Button>}
-            <Button size="lg" onClick={guardar} className="px-8">Guardar</Button>
+            <Button size="lg" onClick={guardar} disabled={guardando} className="px-8">{guardando ? "Guardando…" : "Guardar"}</Button>
           </DialogFooter>
         )}
       </DialogContent>
@@ -317,6 +367,9 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
   // Crear centro = admin; editar uno existente = admin o miembro del centro.
   const editable = puede("editar") && (nuevo ? gestiona() : gestiona(null, centro?.id));
 
+  const [guardando, setGuardando] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { bodyRef.current?.focus(); }, []);
   // Relación N:M centro -> hospitales que atiende (solo admin, centro existente).
   const [hosps, setHosps] = useState<any[]>([]);
   const [selHosp, setSelHosp] = useState<Set<string>>(new Set());
@@ -331,8 +384,13 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
   }
 
   async function guardar() {
+    if (!c?.nombre?.trim()) { toast.error("El nombre del centro es obligatorio."); return; }
+    setGuardando(true);
     const r = await upsertCentro(c);
-    if (r.ok) { toast.success(nuevo ? "Centro creado" : "Centro actualizado"); onChanged?.(); onClose(); } else toast.error((r as any).error);
+    setGuardando(false);
+    // En error: no se cierra ni se resetea `c` — los cambios quedan para reintentar.
+    if (r.ok) { toast.success(nuevo ? "Centro creado" : "Centro actualizado"); onChanged?.(); onClose(); }
+    else toast.error((r as any).error ?? "No se pudo guardar. Inténtalo de nuevo.");
   }
   async function borrar() {
     if (!confirm("¿Eliminar este centro de acopio?")) return;
@@ -346,7 +404,7 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-lg">
         <DialogHeader><DialogTitle className="text-xl pr-8">📦 {nuevo ? "Nuevo centro de acopio" : c.nombre}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div ref={bodyRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
           <Campo label="Nombre"><Input readOnly={ro} value={c.nombre ?? ""} onChange={(e) => setC({ ...c, nombre: e.target.value })} className={inputCls} /></Campo>
           <div className="grid grid-cols-2 gap-2">
             <Campo label="Zona"><Input readOnly={ro} value={c.zona ?? ""} placeholder="Los Palos Grandes…" onChange={(e) => setC({ ...c, zona: e.target.value })} className={inputCls} /></Campo>
@@ -401,7 +459,7 @@ export function CentroDialog({ centro, onClose, onChanged }: { centro: any; onCl
         {editable && (
           <DialogFooter className="gap-2">
             {!nuevo && <Button variant="ghost" size="lg" onClick={borrar} className="text-destructive sm:mr-auto">Eliminar</Button>}
-            <Button size="lg" onClick={guardar} className="px-8">{nuevo ? "Crear" : "Guardar"}</Button>
+            <Button size="lg" onClick={guardar} disabled={guardando} className="px-8">{guardando ? "Guardando…" : nuevo ? "Crear" : "Guardar"}</Button>
           </DialogFooter>
         )}
       </DialogContent>
@@ -420,6 +478,10 @@ export function HospitalDialog({ hospital, onClose, onChanged }: { hospital: any
   const [enviado, setEnviado] = useState(false);
   const [resp, setResp] = useState<{ nombre?: string | null; contacto?: string | null } | null>(null);
   const [donando, setDonando] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (h || err) bodyRef.current?.focus(); }, [h, err]);
   async function donar() {
     if (!nota.trim()) { toast.error("Escribe qué quieres donar."); return; }
     setDonando(true);
@@ -430,11 +492,22 @@ export function HospitalDialog({ hospital, onClose, onChanged }: { hospital: any
     toast.success("¡Gracias! 💜 Avisamos al hospital.");
   }
 
-  useEffect(() => { getHospital(hospital.id).then((r) => { setH(r.hospital); setInsumos(r.insumos); }); }, [hospital.id]);
+  useEffect(() => {
+    let vivo = true;
+    setErr(null); setH(null);
+    getHospital(hospital.id)
+      .then((r) => { if (!vivo) return; if (!r?.hospital) { setErr("No se encontró este hospital."); return; } setH(r.hospital); setInsumos(r.insumos ?? []); })
+      .catch(() => { if (vivo) setErr("No se pudo cargar. Revisa tu conexión e inténtalo de nuevo."); });
+    return () => { vivo = false; };
+  }, [hospital.id]);
 
   async function guardarResp() {
+    if (!h?.nombre?.trim()) { toast.error("El nombre del hospital es obligatorio."); return; }
+    setGuardando(true);
     const r = await actualizarHospital(hospital.id, h);
-    if (r.ok) { toast.success("Hospital actualizado"); onChanged?.(); } else toast.error((r as any).error);
+    setGuardando(false);
+    if (r.ok) { toast.success("Hospital actualizado"); onChanged?.(); }
+    else toast.error((r as any).error ?? "No se pudo guardar. Inténtalo de nuevo.");
   }
   async function borrarHospital() {
     if (!confirm(`¿Eliminar ${hospital.nombre}? Se borran sus insumos. No se puede deshacer.`)) return;
@@ -453,8 +526,15 @@ export function HospitalDialog({ hospital, onClose, onChanged }: { hospital: any
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-lg">
         <DialogHeader><DialogTitle className="text-xl pr-8">🏥 {hospital.nombre}</DialogTitle></DialogHeader>
+        {err && (
+          <div ref={bodyRef} tabIndex={-1} className="py-6 text-center text-sm text-muted-foreground outline-none">
+            <p className="mb-3">⚠️ {err}</p>
+            <Button variant="outline" size="lg" onClick={onClose}>Cerrar</Button>
+          </div>
+        )}
+        {!h && !err && <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Cargando…</div>}
         {h && (
-          <div className="flex flex-col gap-3 text-sm">
+          <div ref={bodyRef} tabIndex={-1} className="flex flex-col gap-3 text-sm outline-none">
             {h.ubicacion && <p>📍 {h.ubicacion}</p>}
             <p className="text-muted-foreground">{hospital.personas ?? 0} personas · {insumos.length} insumos pendientes · {hospital.criticos ?? 0} críticos</p>
 
@@ -531,7 +611,7 @@ export function HospitalDialog({ hospital, onClose, onChanged }: { hospital: any
                   <Input value={h.responsable_recepcion_contacto ?? ""} onChange={(e) => setH({ ...h, responsable_recepcion_contacto: e.target.value })} className={inputCls} />
                 </Campo>
                 <div className="flex gap-2">
-                  <Button size="lg" onClick={guardarResp} className="flex-1">Guardar</Button>
+                  <Button size="lg" onClick={guardarResp} disabled={guardando} className="flex-1">{guardando ? "Guardando…" : "Guardar"}</Button>
                   {rol === "admin" && <Button size="lg" variant="ghost" onClick={borrarHospital} className="text-destructive">Eliminar</Button>}
                 </div>
                 <Separator />

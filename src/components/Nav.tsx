@@ -5,19 +5,25 @@ import Link from "next/link";
 import { Menu } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { UserMenu } from "@/components/UserMenu";
+import { DonarNav } from "@/components/donaciones/DonarNav";
 import { useRol } from "@/lib/rol";
 
 // Enlaces de navegación. En escritorio van inline; en móvil entran al menú hamburguesa.
 const LINKS = [
   { href: "/", label: "Inicio" },
-  { href: "/ofrecer", label: "Donar 💜" },
+  { href: "/donaciones/crear", label: "Donar 💜" },
+  { href: "/solicitudes", label: "Solicitudes" },
+  { href: "/donaciones", label: "Mis donaciones" },
+  { href: "/documentos", label: "Cargar 📄" },
+  { href: "/mis-cargas", label: "Mis cargas" },
   { href: "/desaparecidos", label: "Desaparecidos" },
-  { href: "/refugios", label: "Refugios" },
+  { href: "/refugios", label: "Centros" },
   { href: "/dashboard", label: "Panel" },
   { href: "/chat", label: "Avi" },
+  { href: "/ayuda", label: "Ayuda ❓" }, // AGENT H: enlace ADITIVO a la guía completa (público)
 ];
-// Visitante sin cuenta: Inicio, Donar, Avi + refugios/desaparecidos (solo ver/buscar).
-const PUB_HREFS = new Set(["/", "/ofrecer", "/chat", "/desaparecidos", "/refugios"]);
+// Visitante sin cuenta: Inicio, Donar, Avi + refugios/desaparecidos (solo ver/buscar) + Ayuda.
+const PUB_HREFS = new Set(["/", "/donaciones/crear", "/chat", "/desaparecidos", "/refugios", "/ayuda"]);
 
 export function Nav() {
   const { email } = useRol();
@@ -37,7 +43,9 @@ export function Nav() {
       {/* Escritorio: enlaces inline */}
       <div className="hidden sm:flex items-center gap-1">
         {links.map((l) => (
-          <Link key={l.href} href={l.href} className="px-2.5 py-1.5 rounded-lg hover:bg-muted">{l.label}</Link>
+          l.href === "/donaciones/crear" && email
+            ? <DonarNav key={l.href} label={l.label} className="px-2.5 py-1.5 rounded-lg hover:bg-muted" />
+            : <Link key={l.href} href={l.href} className="px-2.5 py-1.5 rounded-lg hover:bg-muted">{l.label}</Link>
         ))}
       </div>
 
@@ -53,8 +61,10 @@ export function Nav() {
         {open && (
           <div className="absolute right-0 mt-2 w-44 rounded-xl border bg-card shadow-lg z-50 p-1">
             {links.map((l) => (
-              <Link key={l.href} href={l.href} onClick={() => setOpen(false)}
-                className="block px-3 py-2 text-sm rounded-md hover:bg-muted">{l.label}</Link>
+              l.href === "/donaciones/crear" && email
+                ? <DonarNav key={l.href} label={l.label} className="block px-3 py-2 text-sm rounded-md hover:bg-muted w-full text-left" onNavigate={() => setOpen(false)} />
+                : <Link key={l.href} href={l.href} onClick={() => setOpen(false)}
+                    className="block px-3 py-2 text-sm rounded-md hover:bg-muted">{l.label}</Link>
             ))}
           </div>
         )}

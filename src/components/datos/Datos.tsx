@@ -95,7 +95,7 @@ export function Datos({ counts }: { counts: Counts }) {
   ];
   const colHosp: Col[] = [
     { accessorKey: "nombre", header: "Hospital", cell: (c) => <span className="font-medium">{c.getValue() as string}</span> },
-    { id: "tipo", accessorKey: "tipo", header: "Tipo", cell: (c) => { const t = c.getValue() as string; return <span>{t === "clinica" ? "Clínica" : t === "refugio" ? "Refugio" : "Hospital"}</span>; } },
+    { id: "tipo", accessorKey: "tipo", header: "Tipo", cell: (c) => { const t = c.getValue() as string; return <span>{t === "clinica" ? "Clínica" : t === "refugio" ? "Refugio" : t === "centro" ? "Centro de acopio" : "Hospital"}</span>; } },
     { accessorKey: "ubicacion", header: "Ubicación", cell: (c) => (c.getValue() as string) ?? "—" },
     { accessorKey: "personas", header: "Personas" },
     { accessorKey: "insumos", header: "Insumos" },
@@ -164,6 +164,12 @@ export function Datos({ counts }: { counts: Counts }) {
 
         {verPersonas && (
           <TabsContent value="personas">
+            {personasQ.isError && (
+              <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                <span>⚠️ No se pudo cargar la lista de personas.</span>
+                <Button size="sm" variant="outline" onClick={() => personasQ.refetch()}>Reintentar</Button>
+              </div>
+            )}
             <DataTable columns={colPersonas} data={personasQ.data?.rows ?? []} placeholder="Buscar persona, cédula, zona…"
               facets={[
                 { columnId: "estado_salud", label: "Estado", options: ["vivo", "herido", "desaparecido", "fallecido", "desconocido"] },

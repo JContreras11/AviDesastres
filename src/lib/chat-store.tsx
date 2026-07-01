@@ -41,9 +41,11 @@ function tipRandom(rol: string, evitar?: string) {
   const opts = tipsDe(rol).filter((t) => t !== evitar);
   return opts[Math.floor(Math.random() * opts.length)] ?? tipsDe(rol)[0];
 }
-function saludoInicial(rol: string, nombre: string | null): Msg {
+// `tip` explícito = saludo determinista (para SSR/primer render: evita hydration
+// mismatch React #418). Sin tip cae al primer tip (índice 0), no a Math.random.
+function saludoInicial(rol: string, nombre: string | null, tip?: string): Msg {
   const hola = nombre ? `¡Hola, ${nombre.split(" ")[0]}! ` : "¡Hola! ";
-  return { rol: "bot", texto: `${hola}Soy Avi 💜 ${tipRandom(rol)}` };
+  return { rol: "bot", texto: `${hola}Soy Avi 💜 ${tip ?? tipsDe(rol)[0]}` };
 }
 
 type ChatCtx = {
@@ -70,9 +72,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [grabando, setGrabando] = useState(false);
   const rec = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
+  // Estado de una creación en curso (gather multi-turno de Avi): viaja de ida/vuelta
+  // con cada mensaje para que Avi recuerde insumos + centro y termine la solicitud/donación.
+  const pendiente = useRef<any>(null);
 
   useEffect(() => {
-    try { const s = localStorage.getItem(KEY); if (s) { const m = JSON.parse(s); if (Array.isArray(m) && m.length) setMsgs(m); } } catch {}
+    try { const s = localStorage.getItem(KEY); if (s) { const m = JSON.parse(s); if (Array.isArray(m) && m.length) { setMsgs(m); return; } } } catch {}
+    // Sin historial: ya montados en cliente, randomizamos el tip (no rompe hydration).
+    setMsgs([saludoInicial(rol, nombre, tipRandom(rol))]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     try { localStorage.setItem(KEY, JSON.stringify(msgs.slice(-50))); } catch {}
@@ -84,7 +92,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setMsgs((m) => [...m, { rol: "user", texto: q }]);
     setCargando(true);
     try {
-      const { respuesta, insumos, resultados } = await preguntar(q);
+      const { respuesta, insumos, resultados, pendiente: pend } = await preguntar(q, pendiente.current);
+      pendiente.current = pend ?? null; // recuerda (o limpia) la creación en curso
       setMsgs((m) => [...m, { rol: "bot", texto: respuesta, insumos: insumos?.length ? insumos : undefined, resultados: resultados?.length ? resultados : undefined }]);
     } catch {
       setMsgs((m) => [...m, { rol: "bot", texto: "Error consultando. Intenta de nuevo." }]);
@@ -126,12 +135,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setMsgs((m) => [
       ...m,
       ...files.map((f) => ({ rol: "user" as const, texto: "", archivo: { nombre: f.name, formato: (f.name.split(".").pop() || "archivo").toUpperCase() } })),
-      { rol: "bot" as const, texto: "Recibido 📄 — lo estoy leyendo. Revisa el panel de carga abajo para confirmar y guardar." },
+      { rol: "bot" as const, texto: "Recibido 📄 — lo estoy leyendo. Aquí abajo verás una tarjeta con lo que extraje: revísala y pulsa **Guardar**. Cuando la guardes, quedará registrada y la verás en /mis-cargas." },
     ]);
     window.dispatchEvent(new CustomEvent("avi-cargar", { detail: files }));
   }
 
-  const limpiar = () => setMsgs([saludoInicial(rol, nombre)]);
+  const limpiar = () => { pendiente.current = null; setMsgs([saludoInicial(rol, nombre)]); };
 
   // Nudge proactivo (inactividad): añade un tip al azar, pero no insiste:
   // máximo 1 mensaje del bot encima de lo último que dijo el usuario.

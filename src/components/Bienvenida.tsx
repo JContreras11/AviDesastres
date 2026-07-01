@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 // Aviso de bienvenida al entrar: qué es AviHelp, qué puedes hacer y descargo de responsabilidad.
 // Se muestra una vez (localStorage). Subir VERSION para volver a mostrarlo a todos.
@@ -15,7 +17,8 @@ const PASOS = [
   { n: 3, t: "Registrar / solicitar", d: "El personal verificado de un centro registra personas e insumos, y actualiza el estatus cuando llega la ayuda." },
 ];
 
-export function Bienvenida() {
+// Se monta en el layout para TODOS (incl. público / sin sesión).
+export function Bienvenida({ loggedIn = false }: { loggedIn?: boolean }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     try { if (!localStorage.getItem(KEY)) setOpen(true); } catch {}
@@ -54,8 +57,17 @@ export function Bienvenida() {
             a una persona o insumos.
           </p>
         </div>
-        <DialogFooter>
-          <Button size="lg" onClick={cerrar} className="w-full">Entendido</Button>
+        <Link href="/ayuda" onClick={cerrar} className="text-sm font-medium text-primary hover:underline">
+          Ver guía completa →
+        </Link>
+        <DialogFooter className="gap-2 sm:gap-2">
+          {!loggedIn && (
+            <Link href="/login" onClick={cerrar}
+              className={cn(buttonVariants({ variant: "outline", size: "lg" }), "w-full sm:flex-1")}>
+              Iniciar sesión
+            </Link>
+          )}
+          <Button size="lg" onClick={cerrar} className="w-full sm:flex-1">Entendido</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

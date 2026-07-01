@@ -16,6 +16,8 @@ import { useRol } from "@/lib/rol";
 import type { DocumentoAnalizado } from "@/lib/ai/vision";
 import type { ColaItem } from "./captura/tipos";
 import { DocCard } from "./captura/DocCard";
+import { HospitalSelect, type HospFiltro } from "./captura/HospitalSelect";
+import { HelpTip } from "@/components/ui/help-tip";
 
 const CONCURRENCIA = 2;
 
@@ -31,8 +33,10 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
   const [grabando, setGrabando] = useState(false);
   const [segs, setSegs] = useState(0);
   const [drag, setDrag] = useState(false);
+  const [guardandoTodo, setGuardandoTodo] = useState(false);
   const [texto, setTexto] = useState("");
   const [urlIn, setUrlIn] = useState("");
+  const [hospGlobal, setHospGlobal] = useState<HospFiltro>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const camRef = useRef<HTMLInputElement>(null);
   const gps = useRef<{ lat: number; lng: number } | null>(null);
@@ -40,6 +44,9 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
   const chunks = useRef<Blob[]>([]);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const enVuelo = useRef<Set<string>>(new Set());
+  // Institución global "pegajosa": se aplica también a las tarjetas que terminan DESPUÉS de
+  // elegirla (caso típico: PDF de muchas páginas que van llegando una a una).
+  const hospGlobalRef = useRef<HospFiltro>(null);
 
   // Lista de instituciones existentes para emparejar (evita duplicados al guardar).
   useEffect(() => { listarHospitalesSelect().then(setHospitales).catch(() => {}); }, []);
@@ -62,6 +69,18 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
 
   const upd = (id: string, patch: Partial<ColaItem>) =>
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+
+  // Asignador GLOBAL: pone la misma institución a TODAS las tarjetas listas de un golpe.
+  // Cada tarjeta puede luego cambiarla individualmente (override) sin afectar a las demás.
+  function asignarHospitalTodos(h: HospFiltro) {
+    setHospGlobal(h);
+    hospGlobalRef.current = h;
+    setItems((xs) =>
+      xs.map((x) =>
+        x.estado === "listo" && x.preview ? { ...x, preview: { ...x.preview, hospital: h } } : x,
+      ),
+    );
+  }
 
   // Reintentar un ítem que falló (la IA a veces falla una página densa; un reintento suele bastar).
   function reintentar(id: string) {
@@ -110,9 +129,11 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
       } else {
         res = await analizarVoz(it.texto ?? "");
       }
-      if (res.ok)
-        upd(it.id, { estado: "listo", preview: res.preview, foto: res.foto, exif: res.exif, confianza: res.confianza, modelo: res.modelo });
-      else upd(it.id, { estado: "error", error: res.error });
+      if (res.ok) {
+        // Si ya hay institución global elegida, esta tarjeta (recién lista) también la hereda.
+        const preview = hospGlobalRef.current ? { ...res.preview, hospital: hospGlobalRef.current } : res.preview;
+        upd(it.id, { estado: "listo", preview, foto: res.foto, exif: res.exif, confianza: res.confianza, modelo: res.modelo });
+      } else upd(it.id, { estado: "error", error: res.error });
     } catch (e: any) {
       upd(it.id, { estado: "error", error: e?.message ?? "Error" });
     } finally {
@@ -184,14 +205,20 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
         confianza: it.confianza, modelo: it.modelo ?? "", notas: it.notas,
       });
       if (res.ok) { upd(it.id, { estado: "guardado" }); toast.success(res.resumen); refrescar(); }
-      else upd(it.id, { estado: "listo", error: res.error });
+      // En error: vuelve a "listo" conservando lo cargado y AVISA (antes fallaba en silencio).
+      else { upd(it.id, { estado: "listo", error: res.error }); toast.error(res.error ?? "No se pudo guardar. Inténtalo de nuevo."); }
     } catch (e: any) {
       upd(it.id, { estado: "listo", error: e?.message });
+      toast.error(e?.message ?? "No se pudo guardar. Revisa tu conexión.");
     }
   }
 
+  // Guarda en serie; bloquea el botón para no duplicar y evita perder lo no guardado.
   async function guardarTodo() {
-    for (const it of items.filter((x) => x.estado === "listo")) await guardar(it);
+    if (guardandoTodo) return;
+    setGuardandoTodo(true);
+    try { for (const it of items.filter((x) => x.estado === "listo")) await guardar(it); }
+    finally { setGuardandoTodo(false); }
   }
 
   // Micrófono: graba audio real (MediaRecorder) y lo transcribe en el servidor.
@@ -316,7 +343,7 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
                 {grabando && <span className="absolute inset-0 rounded-full bg-red-400/50 animate-ping" />}
                 <span className="relative">{grabando ? "⏹️" : "🎙️"}</span>
               </button>
-              <span className="text-sm text-muted-foreground text-center">
+              <span className="text-sm text-muted-foreground text-center" aria-live="polite" role="status">
                 {grabando ? `🔴 Grabando ${Math.floor(segs / 60)}:${String(segs % 60).padStart(2, "0")} — toca para detener` : "Toca y dicta una lista o nota; la IA la transcribe y estructura."}
               </span>
             </div>
@@ -329,12 +356,27 @@ export function Captura({ soloCola = false }: { soloCola?: boolean } = {}) {
       {items.length > 0 && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 text-sm">
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground" aria-live="polite" role="status">
               {pendientes > 0 ? `⏳ ${pendientes} procesando…` : "Listo para revisar"}
               {listos > 0 && ` · ${listos} por guardar`}
             </span>
-            {listos > 1 && <Button size="sm" onClick={guardarTodo}>Guardar todo ({listos})</Button>}
+            {listos > 1 && <Button size="sm" onClick={guardarTodo} disabled={guardandoTodo}>{guardandoTodo ? "Guardando…" : `Guardar todo (${listos})`}</Button>}
           </div>
+
+          {/* Asignar la MISMA institución a todas las tarjetas a la vez (cada una puede cambiarla después). */}
+          {listos > 1 && (
+            <div className="rounded-xl border bg-muted/30 p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+              <label className="text-sm font-medium shrink-0">🏥 Asignar todas a: <HelpTip label="¿Qué hace asignar todas?">Pone la misma institución a todas las tarjetas de golpe. Útil cuando un PDF largo es todo del mismo hospital; luego puedes cambiar alguna.</HelpTip></label>
+              <div className="flex-1 min-w-0">
+                <HospitalSelect
+                  hospitales={hospitales}
+                  value={hospGlobal}
+                  onChange={asignarHospitalTodos}
+                  placeholder="Elegir institución para todas…"
+                />
+              </div>
+            </div>
+          )}
           <div className="gap-3 columns-1 md:columns-2 xl:columns-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
             {items.map((it) => (
               <DocCard

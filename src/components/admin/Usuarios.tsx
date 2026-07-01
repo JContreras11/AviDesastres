@@ -6,7 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { crearUsuario, actualizarUsuario, cambiarPasswordUsuario, eliminarUsuario, listarUsuarios,
-  listarInstituciones, getMembresias, setMembresias } from "@/app/actions/usuarios";
+  listarInstituciones, getMembresias, setMembresias,
+  listarRegistrosPendientes, aprobarRegistro, rechazarRegistro } from "@/app/actions/usuarios";
 import { impersonar } from "@/app/actions/impersonar";
 
 const ROLES = [
@@ -30,11 +31,17 @@ export function Usuarios({ inicial, hospitales }: { inicial: Usuario[]; hospital
   const [, refrescar] = useTransition();
 
   async function recargar() {
-    setUsuarios(await listarUsuarios() as Usuario[]);
+    try {
+      setUsuarios(await listarUsuarios() as Usuario[]);
+    } catch {
+      toast.error("No se pudo refrescar la lista de usuarios.");
+    }
   }
 
   return (
     <div className="flex flex-col gap-4">
+      <RegistrosPendientes onCambio={recargar} />
+
       <div className="flex justify-end">
         <Button onClick={() => setCreando(true)}>+ Nuevo usuario</Button>
       </div>
@@ -68,6 +75,76 @@ export function Usuarios({ inicial, hospitales }: { inicial: Usuario[]; hospital
   );
 }
 
+// ── Registros pendientes de aprobación (auto-registro) ──
+type Pendiente = { membresiaId: string; userId: string; email: string | null; nombre: string | null; telefono: string | null; rolSolicitado: string; institucion: string; created_at: string };
+
+function RegistrosPendientes({ onCambio }: { onCambio: () => void }) {
+  const [lista, setLista] = useState<Pendiente[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [roles, setRoles] = useState<Record<string, string>>({});
+  const [procesando, setProcesando] = useState<string | null>(null);
+
+  async function recargar() {
+    try {
+      const p = await listarRegistrosPendientes() as Pendiente[];
+      setLista(p);
+      setRoles(Object.fromEntries(p.map((x) => [x.membresiaId, x.rolSolicitado])));
+    } catch { toast.error("No se pudieron cargar los registros pendientes."); }
+    finally { setCargando(false); }
+  }
+  useEffect(() => { recargar(); }, []);
+
+  async function aprobar(m: Pendiente) {
+    setProcesando(m.membresiaId);
+    const r = await aprobarRegistro(m.membresiaId, roles[m.membresiaId]);
+    setProcesando(null);
+    if (!r.ok) { toast.error((r as any).error); return; }
+    toast.success(`Acceso aprobado para ${m.nombre || m.email}.`);
+    recargar(); onCambio();
+  }
+  async function rechazar(m: Pendiente) {
+    if (!confirm(`¿Rechazar la solicitud de ${m.nombre || m.email}?`)) return;
+    setProcesando(m.membresiaId);
+    const r = await rechazarRegistro(m.membresiaId);
+    setProcesando(null);
+    if (!r.ok) { toast.error((r as any).error); return; }
+    toast.success("Solicitud rechazada.");
+    recargar(); onCambio();
+  }
+
+  if (cargando || lista.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50/60 dark:bg-amber-950/20 p-3 flex flex-col gap-2">
+      <p className="font-semibold text-sm flex items-center gap-2">
+        <span className="grid place-items-center size-5 rounded-full bg-amber-500 text-white text-xs">{lista.length}</span>
+        Registros pendientes de aprobación
+      </p>
+      <div className="flex flex-col gap-2">
+        {lista.map((m) => (
+          <div key={m.membresiaId} className="rounded-lg border bg-background p-3 flex flex-col gap-2">
+            <div className="min-w-0">
+              <p className="font-medium truncate">{m.nombre || m.email}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {m.email}{m.telefono ? ` · 📞 ${m.telefono}` : ""} · 🏥 {m.institucion}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={roles[m.membresiaId] ?? m.rolSolicitado}
+                onChange={(e) => setRoles((r) => ({ ...r, [m.membresiaId]: e.target.value }))}
+                className={selCls + " flex-1 min-w-[8rem]"}>
+                {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+              </select>
+              <Button size="sm" disabled={procesando === m.membresiaId} onClick={() => aprobar(m)}>Aprobar</Button>
+              <Button size="sm" variant="outline" disabled={procesando === m.membresiaId} onClick={() => rechazar(m)}>Rechazar</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null; hospitales: Hospital[]; onClose: () => void; onSaved: () => void }) {
   const nuevo = !u;
   const [email, setEmail] = useState(u?.email ?? "");
@@ -83,13 +160,19 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
   const [inst, setInst] = useState<{ hospitales: { id: string; nombre: string; tipo?: string }[]; centros: { id: string; nombre: string }[] }>({ hospitales: [], centros: [] });
   const [selH, setSelH] = useState<Map<string, string>>(new Map());
   const [selC, setSelC] = useState<Map<string, string>>(new Map());
+  const [cargandoInst, setCargandoInst] = useState(false);
   useEffect(() => {
     if (nuevo) return;
-    listarInstituciones().then(setInst);
-    getMembresias(u!.id).then((m) => {
-      setSelH(new Map(m.hospitalIds.map((id) => [id, m.roles[id] ?? "responsable"])));
-      setSelC(new Map(m.centroIds.map((id) => [id, m.roles[id] ?? "responsable"])));
-    });
+    setCargandoInst(true);
+    Promise.all([
+      listarInstituciones().then(setInst),
+      getMembresias(u!.id).then((m) => {
+        setSelH(new Map(m.hospitalIds.map((id) => [id, m.roles[id] ?? "responsable"])));
+        setSelC(new Map(m.centroIds.map((id) => [id, m.roles[id] ?? "responsable"])));
+      }),
+    ])
+      .catch(() => toast.error("No se pudieron cargar las instituciones del usuario."))
+      .finally(() => setCargandoInst(false));
   }, [nuevo, u]);
   const toggle = (map: Map<string, string>, fn: (m: Map<string, string>) => void, id: string) => {
     const n = new Map(map); n.has(id) ? n.delete(id) : n.set(id, "responsable"); fn(n);
@@ -105,6 +188,11 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
   }
 
   async function guardar() {
+    // Validación cliente: NO cerramos ni limpiamos el form al fallar (reintento sin perder datos).
+    if (nuevo) {
+      if (!/^\S+@\S+\.\S+$/.test(email.trim())) { toast.error("Escribe un correo válido."); return; }
+      if (password.length < 6) { toast.error("La contraseña debe tener mínimo 6 caracteres."); return; }
+    }
     setGuardando(true);
     const r = nuevo
       ? await crearUsuario({ email, password, nombre, telefono, rol, hospital_id: hospitalId })
@@ -187,6 +275,10 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
                 <p className="text-sm font-medium mb-1">Instituciones que gestiona</p>
                 <p className="text-xs text-muted-foreground mb-2">El usuario verá/gestionará (como admin) solo lo de estas instituciones. Admin global no necesita esto.</p>
                 <div className="max-h-44 overflow-auto rounded-lg border divide-y">
+                  {cargandoInst && <p className="p-2 text-xs text-muted-foreground">Cargando instituciones…</p>}
+                  {!cargandoInst && inst.hospitales.length === 0 && inst.centros.length === 0 && (
+                    <p className="p-2 text-xs text-muted-foreground">No hay instituciones registradas.</p>
+                  )}
                   {inst.hospitales.map((h) => (
                     <div key={h.id} className="flex items-center gap-2 p-2 text-sm">
                       <label className="flex items-center gap-2 flex-1 min-w-0">

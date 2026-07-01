@@ -2,7 +2,6 @@ import { contarTodo } from "@/app/actions/listas";
 import { Captura } from "@/components/Captura";
 import { Datos } from "@/components/datos/Datos";
 import { HomeCards } from "@/components/HomeCards";
-import { Bienvenida } from "@/components/Bienvenida";
 import { LandingPublico } from "@/components/LandingPublico";
 import { ChatHero } from "@/components/ChatHero";
 import { getSesion, createAdminClient } from "@/lib/supabase/server";
@@ -27,8 +26,6 @@ export default async function Home() {
 
   return (
     <main className="flex-1 px-4 py-10 sm:py-14 bg-gradient-to-b from-primary/5 via-background to-background">
-      <Bienvenida />
-
       {/* Una sola UI: el chat de Avi (con adjuntar/arrastrar archivos y voz para staff). */}
       <ChatHero />
 

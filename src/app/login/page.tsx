@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,9 @@ export default function Login() {
         </label>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button type="submit" size="lg" disabled={cargando}>{cargando ? "Entrando…" : "Entrar"}</Button>
-        <p className="text-xs text-muted-foreground text-center">¿Necesitas acceso? Pídelo al equipo de AviHelp.</p>
+        <p className="text-sm text-muted-foreground text-center">
+          ¿No tienes cuenta? <Link href="/registro" className="text-primary underline font-medium">Regístrate</Link>
+        </p>
       </form>
     </main>
   );

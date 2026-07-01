@@ -3,9 +3,9 @@
 import { useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
 
-type Pin = { id: string; nombre: string; tipo?: string; ubicacion?: string | null; gps_lat?: number | null; gps_lng?: number | null };
+type Pin = { id: string; nombre: string; tipo?: string | null; ubicacion?: string | null; gps_lat?: number | null; gps_lng?: number | null };
 
-const TIPO_LABEL: Record<string, string> = { refugio: "🏠 Refugio", hospital: "🏥 Hospital", clinica: "🏥 Clínica" };
+const TIPO_LABEL: Record<string, string> = { refugio: "🏠 Refugio", hospital: "🏥 Hospital", clinica: "🏥 Clínica", centro: "📦 Centro de acopio" };
 const esc = (s: any) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
 
 // Marcador HTML (divIcon) para no depender de los assets de imagen de Leaflet.
@@ -35,10 +35,11 @@ export function MapaRefugios({ pins, sel, onSelect, visibleIds }: { pins: Pin[];
   useEffect(() => {
     let cancelado = false;
     (async () => {
-      const L = (await import("leaflet")).default;
+      let L;
+      try { L = (await import("leaflet")).default; } catch { return; } // sin red: queda el loader del padre
       if (cancelado || !elRef.current || mapRef.current) return;
       LRef.current = L;
-      const conCoord = pins.filter((p) => p.gps_lat != null && p.gps_lng != null);
+      const conCoord = pins.filter((p) => Number.isFinite(p.gps_lat) && Number.isFinite(p.gps_lng));
       const map = L.map(elRef.current, { scrollWheelZoom: true }).setView([10.50, -66.90], 11);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap", maxZoom: 19,
@@ -90,5 +91,5 @@ export function MapaRefugios({ pins, sel, onSelect, visibleIds }: { pins: Pin[];
     }
   }, [sel]);
 
-  return <div ref={elRef} className="w-full h-full" />;
+  return <div ref={elRef} role="application" aria-label="Mapa interactivo de refugios" className="w-full h-full" />;
 }

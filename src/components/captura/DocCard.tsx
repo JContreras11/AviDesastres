@@ -6,13 +6,23 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Img } from "@/components/Img";
-import type { DocumentoAnalizado } from "@/lib/ai/vision";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { HelpTip } from "@/components/ui/help-tip";
+import { categoriaDoc, type DocumentoAnalizado } from "@/lib/ai/vision";
+import { HospitalSelect, type HospitalOpt } from "./HospitalSelect";
 import type { ColaItem } from "./tipos";
 
-export type HospitalOpt = { id: string; nombre: string; tipo: string };
+export type { HospitalOpt };
 
 const ESTADOS = ["vivo", "herido", "desaparecido", "fallecido", "desconocido"];
 const PRIORIDADES = ["baja", "media", "alta", "critica"];
+const enumOpts = (xs: string[]) => xs.map((v) => ({ value: v, label: v }));
+const SEXO_OPTS = [{ value: "M", label: "M" }, { value: "F", label: "F" }];
+const CAT_LABEL: Record<string, { icon: string; txt: string }> = {
+  personas: { icon: "🧑", txt: "Personas" },
+  insumos: { icon: "📦", txt: "Insumos" },
+  donaciones: { icon: "💜", txt: "Donaciones" },
+};
 
 function set<T>(arr: T[], i: number, patch: Partial<T>): T[] {
   return arr.map((x, j) => (j === i ? { ...x, ...patch } : x));
@@ -33,7 +43,7 @@ function emparejar(nombre: string | null | undefined, lista: HospitalOpt[]): Hos
   return m ?? null;
 }
 
-function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+function Campo({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
       {label}
@@ -42,7 +52,6 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 const inputCls = "h-11 text-base text-foreground";
-const selectCls = "h-11 text-base border rounded-lg px-2 bg-background w-full";
 
 export function DocCard({
   item, onChange, onNotas, onGuardar, onDescartar, onReintentar, hospitales = [],
@@ -86,10 +95,13 @@ export function DocCard({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {item.estado === "error" && onReintentar && (
-            <Button type="button" size="sm" variant="outline" onClick={onReintentar}>↻ Reintentar</Button>
+            <>
+              <HelpTip label="¿Por qué falló?">A veces la IA no logra leer una página densa o borrosa. Toca «Reintentar» — casi siempre funciona en el segundo intento.</HelpTip>
+              <Button type="button" size="sm" variant="outline" onClick={onReintentar}>↻ Reintentar</Button>
+            </>
           )}
           {item.estado !== "guardado" && (
-            <button type="button" onClick={onDescartar} title="Quitar"
+            <button type="button" onClick={onDescartar} title="Quitar" aria-label="Quitar de la cola"
               className="size-8 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition">✕</button>
           )}
         </div>
@@ -102,12 +114,22 @@ export function DocCard({
 
   return (
     <Card className="p-4 sm:p-5 flex flex-col gap-4">
+      {/* Error persistente (ej. fallo al guardar): los datos siguen editables para reintentar. */}
+      {item.error && (
+        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
+          ⚠️ {item.error}
+        </p>
+      )}
       {/* Cabecera: foto grande (zoom) + tipo */}
       <div className="flex items-center gap-3 flex-wrap">
         {item.thumb && <Img src={item.thumb} className="size-16 rounded-xl object-cover shrink-0 ring-1 ring-border cursor-zoom-in" />}
         <div className="flex items-center gap-2 flex-wrap">
-          <Badge className="text-sm py-1 px-3">{p.tipo.replace(/_/g, " ")}</Badge>
+          {(() => { const c = CAT_LABEL[categoriaDoc(p)]; return (
+            <Badge className="text-sm py-1 px-3">{c.icon} {c.txt}</Badge>
+          ); })()}
+          <Badge variant="outline" className="text-sm py-1 px-3">{p.tipo.replace(/_/g, " ")}</Badge>
           <Badge variant="secondary" className="text-sm py-1 px-3">confianza {Math.round(item.confianza * 100)}%</Badge>
+          <HelpTip label="¿Qué es la categoría?">La IA clasificó el documento (personas, insumos o donaciones). Si se equivocó, corrige los datos abajo antes de guardar.</HelpTip>
         </div>
       </div>
 
@@ -115,25 +137,14 @@ export function DocCard({
         <Input value={p.contexto ?? ""} onChange={(e) => onChange({ ...p, contexto: e.target.value })} className={inputCls} />
       </Campo>
 
-      {/* Hospital: SELECT contra existentes (se enlaza por id, sin duplicar). Solo se crea
-          uno nuevo si lo eliges a propósito o si la IA no lo detectó. */}
-      <Campo label="🏥 Hospital / institución">
-        <select
-          value={p.hospital?.id ?? (p.hospital?.nombre ? "__nuevo__" : "")}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v === "") onChange({ ...p, hospital: null });
-            else if (v === "__nuevo__") onChange({ ...p, hospital: { id: null, nombre: p.hospital?.nombre ?? "", ubicacion: p.hospital?.ubicacion ?? null } });
-            else { const h = hospitales.find((x) => x.id === v); onChange({ ...p, hospital: { id: v, nombre: h?.nombre ?? "", ubicacion: p.hospital?.ubicacion ?? null } }); }
-          }}
-          className={selectCls}
-        >
-          <option value="">— Ninguno —</option>
-          {hospitales.map((h) => (
-            <option key={h.id} value={h.id}>{h.nombre}{h.tipo === "clinica" ? " (clínica)" : h.tipo === "refugio" ? " (refugio)" : ""}</option>
-          ))}
-          <option value="__nuevo__">➕ Crear institución nueva…</option>
-        </select>
+      {/* Hospital: combobox BUSCABLE contra existentes (se enlaza por id, sin duplicar) con
+          opción de "crear nueva". Solo se crea una nueva si lo eliges a propósito o la IA la detectó. */}
+      <Campo label={<>🏥 Hospital / institución <HelpTip label="¿Qué institución pongo?">Busca el hospital o refugio en la lista para enlazarlo. Si no existe, escribe el nombre y elige «crear» para añadirlo.</HelpTip></>}>
+        <HospitalSelect
+          hospitales={hospitales}
+          value={p.hospital ?? null}
+          onChange={(h) => onChange({ ...p, hospital: h })}
+        />
       </Campo>
       {/* Crear nueva (deliberado / no detectada): nombre editable solo en este caso. */}
       {p.hospital && !p.hospital.id && (
@@ -166,18 +177,22 @@ export function DocCard({
                   </Campo>
                   {/* Sexo: enum M/F. La IA lo prellena desde el nombre; siempre editable por selector. */}
                   <Campo label="Sexo">
-                    <select value={per.sexo === "M" || per.sexo === "F" ? per.sexo : ""} onChange={(e) => onChange({ ...p, personas: set(p.personas, i, { sexo: e.target.value as any }) })} className={selectCls}>
-                      {!(per.sexo === "M" || per.sexo === "F") && <option value="" disabled>—</option>}
-                      <option value="M">M</option>
-                      <option value="F">F</option>
-                    </select>
+                    <SearchableSelect
+                      options={SEXO_OPTS}
+                      value={per.sexo === "M" || per.sexo === "F" ? per.sexo : null}
+                      onChange={(v) => onChange({ ...p, personas: set(p.personas, i, { sexo: (v ?? null) as any }) })}
+                      placeholder="—"
+                    />
                   </Campo>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Campo label="Estado">
-                    <select value={per.estado_salud ?? "desconocido"} onChange={(e) => onChange({ ...p, personas: set(p.personas, i, { estado_salud: e.target.value as any }) })} className={selectCls}>
-                      {ESTADOS.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={enumOpts(ESTADOS)}
+                      value={per.estado_salud ?? "desconocido"}
+                      onChange={(v) => onChange({ ...p, personas: set(p.personas, i, { estado_salud: (v ?? "desconocido") as any }) })}
+                      placeholder="desconocido"
+                    />
                   </Campo>
                   <Campo label="Procedencia">
                     <Input value={per.ubicacion ?? ""} onChange={(e) => onChange({ ...p, personas: set(p.personas, i, { ubicacion: e.target.value }) })} className={inputCls} />
@@ -214,9 +229,12 @@ export function DocCard({
                     <Input value={ins.presentacion ?? ""} onChange={(e) => onChange({ ...p, insumos: set(p.insumos, i, { presentacion: e.target.value }) })} placeholder="frasco…" className={inputCls} />
                   </Campo>
                   <Campo label="Prioridad">
-                    <select value={ins.prioridad ?? "media"} onChange={(e) => onChange({ ...p, insumos: set(p.insumos, i, { prioridad: e.target.value as any }) })} className={selectCls}>
-                      {PRIORIDADES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={enumOpts(PRIORIDADES)}
+                      value={ins.prioridad ?? "media"}
+                      onChange={(v) => onChange({ ...p, insumos: set(p.insumos, i, { prioridad: (v ?? "media") as any }) })}
+                      placeholder="media"
+                    />
                   </Campo>
                 </div>
               </div>
