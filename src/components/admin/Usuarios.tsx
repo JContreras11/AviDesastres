@@ -219,12 +219,28 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
 
   const hayCambios = nuevo || hasProfileChanges || hasMembresiaChanges;
 
+  const filteredHospitales = useMemo(() => {
+    if (rol === "medico" || rol === "admin") {
+      return inst.hospitales.filter(h => h.tipo !== "refugio");
+    } else if (rol === "voluntario" || rol === "ong") {
+      return inst.hospitales.filter(h => h.tipo === "refugio");
+    }
+    return [];
+  }, [inst.hospitales, rol]);
+
+  const filteredCentros = useMemo(() => {
+    if (rol === "voluntario" || rol === "ong") {
+      return inst.centros;
+    }
+    return [];
+  }, [inst.centros, rol]);
+
   const allIds = useMemo(() => {
     return [
-      ...inst.hospitales.map((h) => ({ id: h.id, type: "h" })),
-      ...inst.centros.map((c) => ({ id: c.id, type: "c" }))
+      ...filteredHospitales.map((h) => ({ id: h.id, type: "h" })),
+      ...filteredCentros.map((c) => ({ id: c.id, type: "c" }))
     ];
-  }, [inst]);
+  }, [filteredHospitales, filteredCentros]);
 
   const allSelected = useMemo(() => {
     if (allIds.length === 0) return false;
@@ -233,13 +249,21 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
 
   const toggleAll = () => {
     if (allSelected) {
-      setSelH(new Map());
-      setSelC(new Map());
+      setSelH(prev => {
+        const next = new Map(prev);
+        filteredHospitales.forEach(h => next.delete(h.id));
+        return next;
+      });
+      setSelC(prev => {
+        const next = new Map(prev);
+        filteredCentros.forEach(c => next.delete(c.id));
+        return next;
+      });
     } else {
       const newH = new Map(selH);
       const newC = new Map(selC);
-      inst.hospitales.forEach(h => newH.set(h.id, "responsable"));
-      inst.centros.forEach(c => newC.set(c.id, "responsable"));
+      filteredHospitales.forEach(h => newH.set(h.id, "responsable"));
+      filteredCentros.forEach(c => newC.set(c.id, "responsable"));
       setSelH(newH);
       setSelC(newC);
     }
@@ -382,10 +406,10 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
             <p className="text-xs text-muted-foreground mb-2">El usuario verá/gestionará (como admin) solo lo de estas instituciones. Admin global no necesita esto.</p>
             <div className="max-h-44 overflow-auto rounded-lg border divide-y">
               {cargandoInst && <p className="p-2 text-xs text-muted-foreground">Cargando instituciones…</p>}
-              {!cargandoInst && inst.hospitales.length === 0 && inst.centros.length === 0 && (
-                <p className="p-2 text-xs text-muted-foreground">No hay instituciones registradas.</p>
+              {!cargandoInst && filteredHospitales.length === 0 && filteredCentros.length === 0 && (
+                <p className="p-2 text-xs text-muted-foreground">No hay instituciones registradas para este rol.</p>
               )}
-              {inst.hospitales.map((h) => (
+              {filteredHospitales.map((h) => (
                 <div key={h.id} className="flex items-center gap-2 p-2 text-sm">
                   <label className="flex items-center gap-2 flex-1 min-w-0">
                     <input type="checkbox" className="size-4" checked={selH.has(h.id)} onChange={() => toggle(selH, setSelH, h.id)} />
@@ -399,7 +423,7 @@ function UsuarioDialog({ u, hospitales, onClose, onSaved }: { u: Usuario | null;
                   )}
                 </div>
               ))}
-              {inst.centros.map((c) => (
+              {filteredCentros.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 p-2 text-sm">
                   <label className="flex items-center gap-2 flex-1 min-w-0">
                     <input type="checkbox" className="size-4" checked={selC.has(c.id)} onChange={() => toggle(selC, setSelC, c.id)} />

@@ -229,3 +229,34 @@ export async function eliminarCentro(id: string) {
   await registrarLog("eliminar", "centro", id);
   return { ok: true };
 }
+
+export async function getRelacionesHospitalRefugio(id: string, isRefugio: boolean) {
+  const s = createAdminClient();
+  const { data, error } = await s
+    .from("hospital_refugio")
+    .select(isRefugio ? "hospital_id" : "refugio_id")
+    .eq(isRefugio ? "refugio_id" : "hospital_id", id);
+  if (error) return [];
+  return (data ?? []).map((r: any) => isRefugio ? r.hospital_id : r.refugio_id) as string[];
+}
+
+export async function setRelacionesHospitalRefugio(nodeId: string, relatedIds: string[], isRefugio: boolean) {
+  const sc = await getScope();
+  if (!sc.admin) return DENEGADO;
+  const s = createAdminClient();
+  const { error: dErr } = await s
+    .from("hospital_refugio")
+    .delete()
+    .eq(isRefugio ? "refugio_id" : "hospital_id", nodeId);
+  if (dErr) return { ok: false, error: dErr.message };
+
+  if (!relatedIds.length) return { ok: true };
+
+  const rows = relatedIds.map((rId) => ({
+    hospital_id: isRefugio ? rId : nodeId,
+    refugio_id: isRefugio ? nodeId : rId,
+  }));
+  const { error: iErr } = await s.from("hospital_refugio").insert(rows);
+  if (iErr) return { ok: false, error: iErr.message };
+  return { ok: true };
+}
