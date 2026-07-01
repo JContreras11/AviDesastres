@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CentroDialog } from "@/components/datos/Detalle";
-import { crearHospital, actualizarHospital, eliminarHospital } from "@/app/actions/crud";
+import { crearHospital, actualizarHospital, eliminarHospital, getRelacionesHospitalRefugio, setRelacionesHospitalRefugio } from "@/app/actions/crud";
 
 const inputCls = "h-11 text-base";
 const selCls = "border rounded-lg h-11 px-2 text-base bg-background w-full";
@@ -88,26 +88,89 @@ export function Instituciones({ hospitales, centros }: { hospitales: Hospital[];
         </div>
       </TabsContent>
 
-      {hosp && <HospitalForm h={hosp} onClose={() => setHosp(null)} onSaved={() => { setHosp(null); recargar(); }} />}
+      {hosp && <HospitalForm h={hosp} hospitales={hospitales} onClose={() => setHosp(null)} onSaved={() => { setHosp(null); recargar(); }} />}
       {centro && <CentroDialog centro={centro} onClose={() => setCentro(null)} onChanged={recargar} />}
     </Tabs>
   );
 }
 
-function HospitalForm({ h, onClose, onSaved }: { h: Hospital; onClose: () => void; onSaved: () => void }) {
+function HospitalForm({ h, hospitales, onClose, onSaved }: { h: Hospital; hospitales: Hospital[]; onClose: () => void; onSaved: () => void }) {
   const nuevo = !h.id;
   const [f, setF] = useState<Hospital>({ tipo: "hospital", ...h });
   const [guardando, setGuardando] = useState(false);
 
+  // Mapeos de hospital ↔ refugio
+  const isRefugio = f.tipo === "refugio";
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [cargandoRel, setCargandoRel] = useState(false);
+  const [buscarTxt, setBuscarTxt] = useState("");
+
+  useEffect(() => {
+    if (nuevo) return;
+    setCargandoRel(true);
+    getRelacionesHospitalRefugio(h.id!, isRefugio)
+      .then((ids) => setSelectedIds(new Set(ids)))
+      .catch(() => toast.error("Error al cargar relaciones."))
+      .finally(() => setCargandoRel(false));
+  }, [nuevo, h.id, isRefugio]);
+
+  const opcionesRelacionables = useMemo(() => {
+    return hospitales.filter((x) => x.id !== h.id && (isRefugio ? x.tipo !== "refugio" : x.tipo === "refugio"));
+  }, [hospitales, h.id, isRefugio]);
+
+  const filteredOpciones = useMemo(() => {
+    const q = buscarTxt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    return opcionesRelacionables.filter(o =>
+      (o.nombre ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(q)
+    );
+  }, [opcionesRelacionables, buscarTxt]);
+
+  const toggleRel = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = useMemo(() => {
+    if (filteredOpciones.length === 0) return false;
+    return filteredOpciones.every(o => selectedIds.has(o.id!));
+  }, [filteredOpciones, selectedIds]);
+
+  const toggleAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        filteredOpciones.forEach(o => next.delete(o.id!));
+      } else {
+        filteredOpciones.forEach(o => next.add(o.id!));
+      }
+      return next;
+    });
+  };
+
   async function guardar() {
-    if (!f.nombre?.trim()) { toast.error("El nombre es obligatorio."); return; } // no pierde lo escrito
+    if (!f.nombre?.trim()) { toast.error("El nombre es obligatorio."); return; }
     setGuardando(true);
     const r = nuevo ? await crearHospital(f) : await actualizarHospital(h.id!, f);
+    if (!r.ok) { setGuardando(false); toast.error((r as any).error); return; }
+
+    const targetId = h.id || r.hospital?.id;
+    if (targetId) {
+      const r2 = await setRelacionesHospitalRefugio(targetId, [...selectedIds], isRefugio);
+      if (!r2.ok) {
+        setGuardando(false);
+        toast.error("Error al guardar las relaciones: " + r2.error);
+        return;
+      }
+    }
+
     setGuardando(false);
-    if (!r.ok) { toast.error((r as any).error); return; }
     toast.success(nuevo ? "Creado." : "Guardado.");
     onSaved();
   }
+
   async function borrar() {
     if (!confirm(`¿Eliminar ${h.nombre}? Se borran sus insumos. No se puede deshacer.`)) return;
     const r = await eliminarHospital(h.id!);
@@ -137,6 +200,44 @@ function HospitalForm({ h, onClose, onSaved }: { h: Hospital; onClose: () => voi
           <label className="flex flex-col gap-1 text-sm font-medium">Contacto
             <Input value={f.contacto ?? ""} onChange={(e) => setF({ ...f, contacto: e.target.value })} className={inputCls} />
           </label>
+
+          <div className="border-t pt-3 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">
+                {isRefugio ? "Hospitales / clínicas cercanos" : "Refugios vinculados"}
+              </p>
+              {filteredOpciones.length > 0 && (
+                <button type="button" onClick={toggleAll} className="text-xs text-primary underline hover:opacity-85">
+                  {allSelected ? "Deseleccionar todos" : "Seleccionar todos"}
+                </button>
+              )}
+            </div>
+            <Input
+              placeholder="Filtrar por nombre…"
+              value={buscarTxt}
+              onChange={(e) => setBuscarTxt(e.target.value)}
+              className="h-9 text-sm"
+            />
+            <div className="max-h-36 overflow-auto rounded-lg border divide-y text-sm">
+              {cargandoRel && <p className="p-2 text-xs text-muted-foreground">Cargando relaciones…</p>}
+              {!cargandoRel && filteredOpciones.length === 0 && (
+                <p className="p-2 text-xs text-muted-foreground">No se encontraron centros.</p>
+              )}
+              {!cargandoRel && filteredOpciones.map((o) => (
+                <label key={o.id} className="flex items-center gap-2 p-2 hover:bg-muted/30 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(o.id!)}
+                    onChange={() => toggleRel(o.id!)}
+                    className="size-4"
+                  />
+                  <span className="truncate">
+                    {o.tipo === "refugio" ? "📦" : "🏥"} {o.nombre}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
         <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between gap-2">
           {!nuevo && <Button variant="destructive" onClick={borrar}>Eliminar</Button>}
