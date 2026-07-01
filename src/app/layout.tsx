@@ -8,6 +8,7 @@ import { Providers } from "@/components/Providers";
 import { ChatProvider } from "@/lib/chat-store";
 import { ChatWidget } from "@/components/ChatWidget";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
+import { Bienvenida } from "@/components/Bienvenida";
 import { getSesion } from "@/lib/supabase/server";
 import "./globals.css";
 
@@ -63,6 +64,8 @@ export default async function RootLayout({
             <ChatProvider>
               {s?.impersonando && <ImpersonationBanner nombre={s.nombre} rol={s.rol} />}
               <div className="print:hidden contents"><Header /></div>
+              {/* Onboarding "¿Cómo funciona?": primera sesión de TODOS (incl. público). */}
+              <Bienvenida loggedIn={!!s} />
               {children}
               <ChatWidget />
             </ChatProvider>

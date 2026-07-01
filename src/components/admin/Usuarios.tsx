@@ -6,7 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { crearUsuario, actualizarUsuario, cambiarPasswordUsuario, eliminarUsuario, listarUsuarios,
-  listarInstituciones, getMembresias, setMembresias } from "@/app/actions/usuarios";
+  listarInstituciones, getMembresias, setMembresias,
+  listarRegistrosPendientes, aprobarRegistro, rechazarRegistro } from "@/app/actions/usuarios";
 import { impersonar } from "@/app/actions/impersonar";
 
 const ROLES = [
@@ -39,6 +40,8 @@ export function Usuarios({ inicial, hospitales }: { inicial: Usuario[]; hospital
 
   return (
     <div className="flex flex-col gap-4">
+      <RegistrosPendientes onCambio={recargar} />
+
       <div className="flex justify-end">
         <Button onClick={() => setCreando(true)}>+ Nuevo usuario</Button>
       </div>
@@ -68,6 +71,76 @@ export function Usuarios({ inicial, hospitales }: { inicial: Usuario[]; hospital
           onSaved={() => { setCreando(false); setEditar(null); refrescar(recargar); }}
         />
       )}
+    </div>
+  );
+}
+
+// ── Registros pendientes de aprobación (auto-registro) ──
+type Pendiente = { membresiaId: string; userId: string; email: string | null; nombre: string | null; telefono: string | null; rolSolicitado: string; institucion: string; created_at: string };
+
+function RegistrosPendientes({ onCambio }: { onCambio: () => void }) {
+  const [lista, setLista] = useState<Pendiente[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [roles, setRoles] = useState<Record<string, string>>({});
+  const [procesando, setProcesando] = useState<string | null>(null);
+
+  async function recargar() {
+    try {
+      const p = await listarRegistrosPendientes() as Pendiente[];
+      setLista(p);
+      setRoles(Object.fromEntries(p.map((x) => [x.membresiaId, x.rolSolicitado])));
+    } catch { toast.error("No se pudieron cargar los registros pendientes."); }
+    finally { setCargando(false); }
+  }
+  useEffect(() => { recargar(); }, []);
+
+  async function aprobar(m: Pendiente) {
+    setProcesando(m.membresiaId);
+    const r = await aprobarRegistro(m.membresiaId, roles[m.membresiaId]);
+    setProcesando(null);
+    if (!r.ok) { toast.error((r as any).error); return; }
+    toast.success(`Acceso aprobado para ${m.nombre || m.email}.`);
+    recargar(); onCambio();
+  }
+  async function rechazar(m: Pendiente) {
+    if (!confirm(`¿Rechazar la solicitud de ${m.nombre || m.email}?`)) return;
+    setProcesando(m.membresiaId);
+    const r = await rechazarRegistro(m.membresiaId);
+    setProcesando(null);
+    if (!r.ok) { toast.error((r as any).error); return; }
+    toast.success("Solicitud rechazada.");
+    recargar(); onCambio();
+  }
+
+  if (cargando || lista.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50/60 dark:bg-amber-950/20 p-3 flex flex-col gap-2">
+      <p className="font-semibold text-sm flex items-center gap-2">
+        <span className="grid place-items-center size-5 rounded-full bg-amber-500 text-white text-xs">{lista.length}</span>
+        Registros pendientes de aprobación
+      </p>
+      <div className="flex flex-col gap-2">
+        {lista.map((m) => (
+          <div key={m.membresiaId} className="rounded-lg border bg-background p-3 flex flex-col gap-2">
+            <div className="min-w-0">
+              <p className="font-medium truncate">{m.nombre || m.email}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {m.email}{m.telefono ? ` · 📞 ${m.telefono}` : ""} · 🏥 {m.institucion}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={roles[m.membresiaId] ?? m.rolSolicitado}
+                onChange={(e) => setRoles((r) => ({ ...r, [m.membresiaId]: e.target.value }))}
+                className={selCls + " flex-1 min-w-[8rem]"}>
+                {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+              </select>
+              <Button size="sm" disabled={procesando === m.membresiaId} onClick={() => aprobar(m)}>Aprobar</Button>
+              <Button size="sm" variant="outline" disabled={procesando === m.membresiaId} onClick={() => rechazar(m)}>Rechazar</Button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
