@@ -49,12 +49,35 @@ export function DonarBoton({ insumo, className = "" }: { insumo: InsumoDonable; 
 
 const mapsUrl = (c: any) =>
   c.gps_lat != null && c.gps_lng != null
-    ? `https://www.google.com/maps?q=${c.gps_lat},${c.gps_lng}`
-    : `https://www.google.com/maps/search/${encodeURIComponent(`${c.nombre} ${c.ubicacion ?? c.zona ?? ""} Venezuela`)}`;
+    ? `https://www.google.com/maps/dir/?api=1&destination=${c.gps_lat},${c.gps_lng}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${c.nombre} ${c.ubicacion ?? c.zona ?? ""} Venezuela`)}`;
 
-export function DonarModal({ insumo, onClose }: { insumo: InsumoDonable; onClose: () => void }) {
+export function DonarModal({
+  insumo,
+  edicion = null,
+  onClose,
+  onChanged,
+}: {
+  insumo: InsumoDonable;
+  edicion?: {
+    id: string;
+    tipoOrigen: "oferta" | "donacion";
+    cantidad: number;
+    nombre: string;
+    telefono: string;
+    email: string;
+    lugarEntregaId: string | null;
+  } | null;
+  onClose: () => void;
+  onChanged?: () => void;
+}) {
   const minimo = 1;
-  const [f, setF] = useState({ cantidad: String(insumo.cantidad ?? minimo), nombre: "", telefono: "", email: "" });
+  const [f, setF] = useState({
+    cantidad: String(edicion ? edicion.cantidad : (insumo.cantidad ?? minimo)),
+    nombre: edicion ? edicion.nombre : "",
+    telefono: edicion ? edicion.telefono : "",
+    email: edicion ? edicion.email : "",
+  });
   const [guardando, setGuardando] = useState(false);
   const [resultado, setResultado] = useState<{ centros: LugarEntrega[]; hospital: any } | null>(null);
   const [centrosPrev, setCentrosPrev] = useState<LugarEntrega[]>([]);
@@ -62,8 +85,8 @@ export function DonarModal({ insumo, onClose }: { insumo: InsumoDonable; onClose
   const [pwOpen, setPwOpen] = useState(false);
 
   // States for delivery selection and interactive map
-  const [lugarRadioId, setLugarRadioId] = useState<string>("");
-  const [selectedLugarId, setSelectedLugarId] = useState<string | null>(null);
+  const [lugarRadioId, setLugarRadioId] = useState<string>(edicion?.lugarEntregaId || "");
+  const [selectedLugarId, setSelectedLugarId] = useState<string | null>(edicion?.lugarEntregaId || null);
 
   useEffect(() => {
     if (insumo.hospital_id) {
@@ -71,15 +94,19 @@ export function DonarModal({ insumo, onClose }: { insumo: InsumoDonable; onClose
         const list = c ?? [];
         setCentrosPrev(list);
         if (list.length > 0) {
-          setLugarRadioId(list[0].id);
-          setSelectedLugarId(list[0].id);
+          const defaultSel = edicion?.lugarEntregaId && list.some((x) => x.id === edicion.lugarEntregaId)
+            ? edicion.lugarEntregaId
+            : list[0].id;
+          setLugarRadioId(defaultSel);
+          setSelectedLugarId(defaultSel);
         }
       });
     }
-  }, [insumo.hospital_id]);
+  }, [insumo.hospital_id, edicion?.lugarEntregaId]);
   useEffect(() => { createClient().auth.getUser().then(({ data }) => setAutenticado(!!data.user)).catch(() => {}); }, []);
   // Logueado: PRE-LLENA nombre/teléfono/correo desde su perfil (editable). Anónimo: en blanco.
   useEffect(() => {
+    if (edicion) return; // Don't pre-fill contact details if editing an existing donation
     perfilContacto().then((p) => {
       if (!p) return;
       setF((prev) => ({
@@ -89,7 +116,7 @@ export function DonarModal({ insumo, onClose }: { insumo: InsumoDonable; onClose
         email: prev.email || (p.email ?? ""),
       }));
     }).catch(() => {});
-  }, []);
+  }, [edicion]);
 
   async function registrar() {
     const cant = Math.floor(Number(f.cantidad));
@@ -105,6 +132,27 @@ export function DonarModal({ insumo, onClose }: { insumo: InsumoDonable; onClose
     if (!r.ok) { toast.error(r.error); return; }
     toast.success("¡Gracias! Tu donación quedó registrada.");
     setResultado({ centros: r.centros ?? [], hospital: r.hospital });
+  }
+
+  async function guardarCambiosEdicion() {
+    const cant = Math.floor(Number(f.cantidad));
+    if (!Number.isFinite(cant) || cant < minimo) { toast.error(`La cantidad mínima es ${minimo}.`); return; }
+    if (!f.nombre.trim()) { toast.error("El nombre es obligatorio."); return; }
+
+    setGuardando(true);
+    const { guardarEdicionDonacion } = await import("@/app/actions/donaciones");
+    const r = await guardarEdicionDonacion(edicion!.id, edicion!.tipoOrigen, {
+      cantidad: cant,
+      nombre: f.nombre,
+      telefono: f.telefono,
+      email: f.email,
+      lugarEntregaId: lugarRadioId || undefined,
+    });
+    setGuardando(false);
+    if (!r.ok) { toast.error((r as any).error); return; }
+    toast.success("Donación actualizada con éxito.");
+    onClose();
+    if (onChanged) onChanged();
   }
 
   // FIX NEVER-ORPHAN: si es anónimo y dejó correo+teléfono, ofrece cuenta antes de registrar.
@@ -125,7 +173,7 @@ export function DonarModal({ insumo, onClose }: { insumo: InsumoDonable; onClose
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-4xl w-full">
-        <DialogHeader><DialogTitle className="text-xl pr-8">💜 Donar: <span className="capitalize">{insumo.nombre}</span></DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="text-xl pr-8">💜 {edicion ? "Editar donación:" : "Donar:"} <span className="capitalize">{insumo.nombre}</span></DialogTitle></DialogHeader>
 
         {!resultado ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -193,7 +241,7 @@ export function DonarModal({ insumo, onClose }: { insumo: InsumoDonable; onClose
                 <Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} className="h-10 text-sm" />
               </label>
               <p className="text-[11px] text-muted-foreground">Te contactaremos para coordinar la entrega física.</p>
-              <DialogFooter className="mt-1"><Button size="lg" onClick={enviar} disabled={guardando} className="w-full">{guardando ? "Registrando…" : "Registrar mi donación"}</Button></DialogFooter>
+              <DialogFooter className="mt-1"><Button size="lg" onClick={edicion ? guardarCambiosEdicion : enviar} disabled={guardando} className="w-full">{guardando ? (edicion ? "Guardando…" : "Registrando…") : edicion ? "Guardar cambios" : "Registrar mi donación"}</Button></DialogFooter>
             </div>
 
             {/* Right Column: Leaflet Map */}
