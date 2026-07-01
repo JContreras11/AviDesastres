@@ -69,9 +69,10 @@ export async function setMembresias(userId: string, hospitales: Memb[], centros:
   // Reemplazo total: borra y reinserta (pocas filas por usuario).
   await a.from("membresias").delete().eq("user_id", userId);
   const rl = (r?: string) => (r === "admin" ? "admin" : "responsable");
+  // Un admin asigna instituciones -> membresías APROBADAS (acceso inmediato).
   const filas = [
-    ...hospitales.map((h) => ({ user_id: userId, hospital_id: h.id, rol_local: rl(h.rol_local) })),
-    ...centros.map((c) => ({ user_id: userId, centro_id: c.id, rol_local: rl(c.rol_local) })),
+    ...hospitales.map((h) => ({ user_id: userId, hospital_id: h.id, rol_local: rl(h.rol_local), estado: "aprobado" })),
+    ...centros.map((c) => ({ user_id: userId, centro_id: c.id, rol_local: rl(c.rol_local), estado: "aprobado" })),
   ];
   if (filas.length === 0) { await registrarLog("editar", "usuario", userId, { membresias: 0 }); return { ok: true }; }
   const { error } = await a.from("membresias").insert(filas);
@@ -128,5 +129,109 @@ export async function eliminarUsuario(id: string) {
   const { error } = await a.auth.admin.deleteUser(id); // FK on delete cascade borra el perfil
   if (error) return { ok: false, error: error.message };
   await registrarLog("eliminar", "usuario", id);
+  return { ok: true };
+}
+
+// ── REGISTRO PÚBLICO (auto-servicio) ──────────────────────────────────────
+// Lista de hospitales/instituciones para el selector del registro. PÚBLICA (no admin):
+// solo nombre + tipo, sin datos sensibles. Se usa en la página /registro.
+export async function institucionesPublicas() {
+  const a = createAdminClient();
+  const { data } = await a.from("hospitales").select("id,nombre,tipo").order("nombre");
+  return (data ?? []) as { id: string; nombre: string; tipo: string | null }[];
+}
+
+const ROLES_SOLICITABLES = ["medico", "voluntario", "ong"];
+
+// El usuario ya creó su cuenta (auth.signUp -> sesión iniciada) y ahora pide acceso
+// atado a UNA institución existente. Crea una membresía PENDIENTE (sin auto-aprobar).
+// El rol solicitado se guarda en el perfil pero NO da acceso hasta la aprobación
+// (getSesion degrada a 'publico' mientras la membresía siga pendiente).
+export async function solicitarAcceso(input: {
+  hospitalId?: string | null; rol?: string; nombre?: string; telefono?: string;
+}) {
+  const sb = await createClient();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return { ok: false, error: "Primero crea tu cuenta e inicia sesión." };
+
+  const hospitalId = input.hospitalId || null;
+  if (!hospitalId) return { ok: false, error: "Selecciona la institución a la que perteneces." };
+  const rol = ROLES_SOLICITABLES.includes(input.rol ?? "") ? input.rol! : "voluntario";
+  const a = createAdminClient();
+
+  // Idempotente: si ya pidió acceso a esa institución, no dupliques la membresía.
+  const { data: existe } = await a.from("membresias")
+    .select("id, estado").eq("user_id", user.id).eq("hospital_id", hospitalId).maybeSingle();
+
+  if (!existe) {
+    const { error } = await a.from("membresias").insert({
+      user_id: user.id, hospital_id: hospitalId, rol_local: "responsable", estado: "pendiente",
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  // Guarda nombre/teléfono y el rol SOLICITADO (efectivo solo tras la aprobación).
+  await a.from("profiles").update({
+    nombre: input.nombre?.trim() || null,
+    telefono: input.telefono?.trim() || null,
+    rol,
+  }).eq("id", user.id);
+
+  await registrarLog("registro", "usuario", user.id, { hospitalId, rol, estado: existe?.estado ?? "pendiente" });
+  return { ok: true, yaAprobado: existe?.estado === "aprobado" };
+}
+
+// ── APROBACIÓN DE REGISTROS (solo admin) ───────────────────────────────────
+export async function listarRegistrosPendientes() {
+  const { a } = await exigirAdmin();
+  const { data: mem } = await a.from("membresias")
+    .select("id, user_id, hospital_id, centro_id, rol_local, created_at")
+    .eq("estado", "pendiente").order("created_at", { ascending: true });
+  if (!mem || mem.length === 0) return [];
+  const userIds = [...new Set(mem.map((m: any) => m.user_id))];
+  const hospIds = [...new Set(mem.map((m: any) => m.hospital_id).filter(Boolean))];
+  const centIds = [...new Set(mem.map((m: any) => m.centro_id).filter(Boolean))];
+  const [{ data: perfiles }, { data: hosps }, { data: cents }] = await Promise.all([
+    a.from("profiles").select("id,email,nombre,telefono,rol").in("id", userIds),
+    hospIds.length ? a.from("hospitales").select("id,nombre").in("id", hospIds) : Promise.resolve({ data: [] }),
+    centIds.length ? a.from("centros_acopio").select("id,nombre").in("id", centIds) : Promise.resolve({ data: [] }),
+  ]);
+  const pById = new Map((perfiles ?? []).map((p: any) => [p.id, p]));
+  const hById = new Map((hosps ?? []).map((h: any) => [h.id, h.nombre]));
+  const cById = new Map((cents ?? []).map((c: any) => [c.id, c.nombre]));
+  return mem.map((m: any) => {
+    const p: any = pById.get(m.user_id) ?? {};
+    return {
+      membresiaId: m.id,
+      userId: m.user_id,
+      email: p.email ?? null,
+      nombre: p.nombre ?? null,
+      telefono: p.telefono ?? null,
+      rolSolicitado: p.rol ?? "voluntario",
+      institucion: m.hospital_id ? (hById.get(m.hospital_id) ?? "—") : (cById.get(m.centro_id) ?? "—"),
+      created_at: m.created_at,
+    };
+  });
+}
+
+export async function aprobarRegistro(membresiaId: string, rol?: string) {
+  const { a } = await exigirAdmin();
+  const { data: m } = await a.from("membresias").select("user_id").eq("id", membresiaId).maybeSingle();
+  if (!m) return { ok: false, error: "Registro no encontrado." };
+  const { error } = await a.from("membresias").update({ estado: "aprobado" }).eq("id", membresiaId);
+  if (error) return { ok: false, error: error.message };
+  // El admin confirma/ajusta el rol otorgado (por defecto el solicitado).
+  if (rol && ROLES.includes(rol)) await a.from("profiles").update({ rol }).eq("id", m.user_id);
+  await registrarLog("aprobar", "registro", m.user_id, { membresiaId, rol: rol ?? null });
+  return { ok: true };
+}
+
+export async function rechazarRegistro(membresiaId: string) {
+  const { a } = await exigirAdmin();
+  const { data: m } = await a.from("membresias").select("user_id").eq("id", membresiaId).maybeSingle();
+  if (!m) return { ok: false, error: "Registro no encontrado." };
+  const { error } = await a.from("membresias").update({ estado: "rechazado" }).eq("id", membresiaId);
+  if (error) return { ok: false, error: error.message };
+  await registrarLog("rechazar", "registro", m.user_id, { membresiaId });
   return { ok: true };
 }

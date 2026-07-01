@@ -24,9 +24,13 @@ const comoLlegar = (r: any) =>
 
 export async function consultarEntidad(entidad: Entidad, filtro: Filtro = {}) {
   const s = await getSesion();
-  const rol = s?.rol ?? "publico";
+  // GATING DE APROBACIÓN: getSesion ya degrada a 'publico' y vacía hospitalIds/centroIds
+  // cuando el registro está pendiente. Reforzamos aquí de forma defensiva: un usuario
+  // pendiente SIEMPRE ve datos a nivel público (nunca responsables/contactos/pacientes),
+  // aunque su perfil pida médico/voluntario. La aprobación la da un admin.
+  const rol = s?.pendiente ? "publico" : (s?.rol ?? "publico");
   const adminReal = rol === "admin" || rol === "medico";
-  const hospitalIds = s?.hospitalIds ?? [];
+  const hospitalIds = s?.pendiente ? [] : (s?.hospitalIds ?? []);
   const a = createAdminClient();
 
   if (entidad === "hospital") {
