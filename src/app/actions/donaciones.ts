@@ -97,6 +97,9 @@ export async function marcarRecibido(donacionId: string) {
   if (!sc.admin && !(hospitalId && sc.hospitalIds.includes(hospitalId))) return DENEGADO;
   const { error } = await a.from("donaciones").update({ estado: "recibido" }).eq("id", donacionId);
   if (error) return { ok: false, error: error.message };
+  // Sincroniza la entrega ligada (evita que quede "por recibir" en la bandeja del hospital, duplicada).
+  await a.from("entregas").update({ estado: "recibido", recibido_at: new Date().toISOString(), recibido_por_user: sc.uid })
+    .eq("donacion_id", donacionId).not("estado", "in", "(recibido,rechazado,cancelado)");
   await registrarLog("recibir", "donacion", donacionId);
   return { ok: true };
 }
