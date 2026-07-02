@@ -9,6 +9,7 @@ import { PersonaDialog, InsumoDialog, HospitalDialog, CentroDialog } from "@/com
 export type ResultadoChat = {
   tipo: "persona" | "insumo" | "hospital" | "centro" | "externo" | "solicitud" | "donacion";
   id?: string; titulo: string; estado?: string | null; sub?: string | null; foto?: string | null; url?: string | null;
+  fuente?: string | null; // fuente externa si importado; null = nativo
 };
 
 const PILL: Record<string, string> = {
@@ -63,6 +64,7 @@ export function ResultadoCards({ resultados }: { resultados: ResultadoChat[] }) 
                 {r.estado && <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize shrink-0 ${PILL[r.estado] ?? "bg-muted"}`}>{String(r.estado).replace("_", " ")}</span>}
                 {r.sub && <span className="text-muted-foreground truncate">{r.estado ? "— " : ""}{r.sub}</span>}
               </p>
+              {r.fuente && <span className="mt-0.5 inline-block rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400" title="Dato de fuente externa">↪ {r.fuente}</span>}
             </div>
             <ArrowUpRight className="size-4 text-muted-foreground shrink-0 transition group-hover:text-foreground group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </button>
