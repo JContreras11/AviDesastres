@@ -78,7 +78,7 @@ export async function consultarEntidad(entidad: Entidad, filtro: Filtro = {}) {
   if (entidad === "insumo") {
     // Las necesidades son públicas (el objetivo es que lleguen los insumos).
     let q = a.from("insumos")
-      .select("id,nombre,cantidad,unidad,presentacion,prioridad,estado,area,hospital_id,hospitales(nombre,ubicacion)")
+      .select("id,nombre,cantidad,unidad,presentacion,prioridad,estado,area,hospital_id,fuente,origen:raw_extraccion->>origen,hospitales(nombre,ubicacion)")
       .in("estado", ["solicitado", "en_transito"]).order("prioridad").limit(40);
     if (filtro.nombre) q = q.ilike("nombre", like(filtro.nombre));
     const { data } = await q;

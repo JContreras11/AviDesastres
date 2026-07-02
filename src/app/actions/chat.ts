@@ -5,6 +5,7 @@ import { createAdminClient, getSesion } from "@/lib/supabase/server";
 import { transcribirAudio } from "@/lib/ai/vision";
 import { buscarExterno } from "@/app/actions/externos";
 import { consultarEntidad } from "@/app/actions/consultas";
+import { fuenteImportada } from "@/lib/fuente";
 import {
   estadoSolicitudesParaChat,
   prepararSolicitudDesdeTexto,
@@ -192,6 +193,7 @@ export async function preguntar(pregunta: string, ctx?: PendienteChat | null): P
 export type ResultadoChat = {
   tipo: "persona" | "insumo" | "hospital" | "centro" | "externo" | "solicitud" | "donacion";
   id?: string; titulo: string; estado?: string | null; sub?: string | null; foto?: string | null; url?: string | null;
+  fuente?: string | null; // nombre de fuente externa si es importado; null/undefined = nativo
 };
 
 function construirResultados(entidad: string | undefined, rows: any[], externos: any[]): ResultadoChat[] {
@@ -201,7 +203,7 @@ function construirResultados(entidad: string | undefined, rows: any[], externos:
     for (const x of top) out.push({ tipo: "persona", id: x.id, titulo: x.nombre ?? "Sin nombre", estado: x.estado_salud ?? null, sub: x.ubicacion ?? x.hospitales?.nombre ?? null, foto: Array.isArray(x.fotos) ? x.fotos[0] : (x.foto ?? null) });
     for (const e of (externos ?? []).slice(0, 6)) out.push({ tipo: "externo", titulo: e.nombre ?? e.titulo ?? "Resultado externo", estado: "externo", sub: e.fuente ?? e.ubicacion ?? null, foto: e.foto ?? e.imagen ?? null, url: e.url ?? e.enlace ?? null });
   } else if (entidad === "insumo") {
-    for (const x of top) out.push({ tipo: "insumo", id: x.id, titulo: x.nombre ?? "Insumo", estado: x.estado ?? null, sub: [x.cantidad, x.hospitales?.nombre].filter(Boolean).join(" · ") || null });
+    for (const x of top) out.push({ tipo: "insumo", id: x.id, titulo: x.nombre ?? "Insumo", estado: x.estado ?? null, sub: [x.cantidad, x.hospitales?.nombre].filter(Boolean).join(" · ") || null, fuente: fuenteImportada({ fuente: x.fuente, origen: x.origen }) });
   } else if (entidad === "hospital") {
     for (const x of top) out.push({ tipo: "hospital", id: x.id, titulo: x.nombre ?? "Institución", sub: x.ubicacion ?? null });
   } else if (entidad === "centro") {
