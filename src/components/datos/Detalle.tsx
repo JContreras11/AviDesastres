@@ -438,7 +438,12 @@ export function InsumoDialog({ id, onClose, onChanged }: { id: string; onClose: 
                     )
                   )}
                   {i.estado === "cubierto" && (
-                    <p className="text-sm font-semibold text-green-700 text-center mt-1">✔ Cubierto{i.cubierto_por ? ` por ${i.cubierto_por}` : ""}</p>
+                    <div className="flex flex-col items-center gap-1 mt-1">
+                      <p className="text-sm font-semibold text-green-700 text-center">✔ Cubierto{i.cubierto_por ? ` por ${i.cubierto_por}` : ""}</p>
+                      {rol === "admin" && (
+                        <button type="button" onClick={() => cambiarEstado("solicitado")} className="text-xs text-muted-foreground underline hover:text-foreground">↩ Reabrir (marcado por error)</button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
